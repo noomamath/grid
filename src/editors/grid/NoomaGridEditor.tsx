@@ -7,10 +7,17 @@ import {
   type TLStore,
 } from "@tldraw/editor";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Tldraw, defaultShapeUtils, type TLUiOverrides } from "tldraw";
+import {
+  DefaultQuickActions,
+  Tldraw,
+  TldrawUiMenuActionItem,
+  defaultShapeUtils,
+  useCanRedo,
+  useCanUndo,
+  type TLUiOverrides,
+} from "tldraw";
 import "tldraw/tldraw.css";
 
-import { MathKeypad } from "@/components/shared/MathKeypad";
 import { loadGuestDocument, saveGuestSnapshot } from "@/core/db";
 import { GRID_SIZE_PX } from "@/core/constants";
 
@@ -38,6 +45,18 @@ const uiOverrides: TLUiOverrides = {
     };
   },
 };
+
+function NoomaQuickActions() {
+  const canUndo = useCanUndo();
+  const canRedo = useCanRedo();
+
+  return (
+    <DefaultQuickActions>
+      <TldrawUiMenuActionItem actionId="undo" disabled={!canUndo} />
+      <TldrawUiMenuActionItem actionId="redo" disabled={!canRedo} />
+    </DefaultQuickActions>
+  );
+}
 
 export function NoomaGridEditor() {
   const [store, setStore] = useState<TLStore | null>(null);
@@ -95,8 +114,11 @@ export function NoomaGridEditor() {
   const components = useMemo(
     () => ({
       Grid: NoomaLineGrid,
-      InFrontOfTheCanvas: MathKeypad,
+      InFrontOfTheCanvas: null,
+      ActionsMenu: null,
+      QuickActions: NoomaQuickActions,
       SharePanel: null,
+      StylePanel: null,
     }),
     []
   );
