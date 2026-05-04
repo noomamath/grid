@@ -6,7 +6,7 @@ export type CellGridDocument = {
   version: 1;
   rows: number;
   cols: number;
-  /** Row-major cell contents; each entry is at most one display character. */
+  /** Row-major cell contents; strings may be multi-character and overflow visually into empty cells to the right. */
   cells: string[];
 };
 

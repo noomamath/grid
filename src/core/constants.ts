@@ -8,4 +8,4 @@ export const CELL_GRID_ROWS = 18;
 export const CELL_GRID_COLS = 32;
 
 /** Cell square size in CSS pixels. */
-export const CELL_SIZE_PX = 28;
+export const CELL_SIZE_PX = 22;
