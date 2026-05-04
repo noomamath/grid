@@ -1,13 +1,23 @@
 import Dexie, { type Table } from "dexie";
 import { GUEST_DOCUMENT_ID, TOOL_TYPE_GRID } from "./constants";
 
+/** Keyboard-first cell grid persisted locally (replaces legacy tldraw snapshot). */
+export type CellGridDocument = {
+  version: 1;
+  rows: number;
+  cols: number;
+  /** Row-major cell contents; each entry is at most one display character. */
+  cells: string[];
+};
+
 export type NoomaDocumentRow = {
   id: string;
   toolType: typeof TOOL_TYPE_GRID;
   updatedAt: number;
-  /** Serialized `TLEditorSnapshot` from `getSnapshot(store)`. */
-  snapshot: unknown;
-  /** Optional JSON blob for simple prefs (theme, keypad layout, etc.). */
+  /** @deprecated Legacy tldraw document; kept if present for archival only. */
+  snapshot?: unknown;
+  cellGrid?: CellGridDocument;
+  /** Optional JSON blob for simple prefs (theme, etc.). */
   prefs?: Record<string, unknown>;
 };
 
@@ -33,12 +43,15 @@ export async function loadGuestDocument(): Promise<NoomaDocumentRow | undefined>
   return getDB().documents.get(GUEST_DOCUMENT_ID);
 }
 
-export async function saveGuestSnapshot(snapshot: unknown): Promise<void> {
+export async function saveGuestCellGrid(cellGrid: CellGridDocument): Promise<void> {
   const now = Date.now();
+  const existing = await getDB().documents.get(GUEST_DOCUMENT_ID);
   await getDB().documents.put({
     id: GUEST_DOCUMENT_ID,
     toolType: TOOL_TYPE_GRID,
     updatedAt: now,
-    snapshot,
+    snapshot: existing?.snapshot,
+    cellGrid,
+    prefs: existing?.prefs,
   });
 }
