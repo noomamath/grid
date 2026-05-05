@@ -1,5 +1,9 @@
 import Dexie, { type Table } from "dexie";
-import { GUEST_DOCUMENT_ID, TOOL_TYPE_GRID } from "./constants";
+import {
+  GUEST_DOCUMENT_ID,
+  TOOL_TYPE_CANVAS,
+  TOOL_TYPE_GRID,
+} from "./constants";
 
 /** Keyboard-first cell grid persisted locally (replaces legacy tldraw snapshot). */
 export type CellGridDocument = {
@@ -12,11 +16,17 @@ export type CellGridDocument = {
 
 export type NoomaDocumentRow = {
   id: string;
-  toolType: typeof TOOL_TYPE_GRID;
+  toolType: typeof TOOL_TYPE_GRID | typeof TOOL_TYPE_CANVAS;
   updatedAt: number;
   /** @deprecated Legacy tldraw document; kept if present for archival only. */
   snapshot?: unknown;
+  /** Legacy keyboard grid document (superseded by Excalidraw embed payloads). */
   cellGrid?: CellGridDocument;
+  /**
+   * Serialized Excalidraw file (`serializeAsJSON` output for `type: "database"`).
+   * When present, the app treats this as the source of truth for the whiteboard.
+   */
+  excalidrawFile?: string;
   /** Optional JSON blob for simple prefs (theme, etc.). */
   prefs?: Record<string, unknown>;
 };
@@ -27,6 +37,9 @@ export class NoomaDB extends Dexie {
   constructor() {
     super("nooma-grid");
     this.version(1).stores({
+      documents: "id, toolType, updatedAt",
+    });
+    this.version(2).stores({
       documents: "id, toolType, updatedAt",
     });
   }
@@ -52,6 +65,21 @@ export async function saveGuestCellGrid(cellGrid: CellGridDocument): Promise<voi
     updatedAt: now,
     snapshot: existing?.snapshot,
     cellGrid,
+    excalidrawFile: existing?.excalidrawFile,
+    prefs: existing?.prefs,
+  });
+}
+
+export async function saveGuestCanvasDocument(excalidrawFile: string): Promise<void> {
+  const now = Date.now();
+  const existing = await getDB().documents.get(GUEST_DOCUMENT_ID);
+  await getDB().documents.put({
+    id: GUEST_DOCUMENT_ID,
+    toolType: TOOL_TYPE_CANVAS,
+    updatedAt: now,
+    snapshot: existing?.snapshot,
+    excalidrawFile,
+    cellGrid: undefined,
     prefs: existing?.prefs,
   });
 }
