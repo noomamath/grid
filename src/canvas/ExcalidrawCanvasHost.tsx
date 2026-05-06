@@ -4,7 +4,6 @@ import {
   CaptureUpdateAction,
   convertToExcalidrawElements,
   Excalidraw,
-  newElementWith,
   serializeAsJSON,
 } from "@excalidraw/excalidraw";
 
@@ -19,15 +18,20 @@ import {
   type ComponentProps,
 } from "react";
 
+import {
+  loadGuestDocument,
+  saveGuestCanvasDocument,
+} from "@/core/db";
+import {
+  NOOMA_EMBED_LINK_PREFIX,
+  noomaEmbedLinkForBlock,
+  type NoomaEmbeddableCustomData,
+} from "@/core/noomaBlocks";
+
 type ExcalidrawAPI = Parameters<
   NonNullable<ComponentProps<typeof Excalidraw>["excalidrawAPI"]>
 >[0];
 
-/**
- * Shape passed to `<Excalidraw initialData={...} />` — the component runs `restore()`
- * internally, so we must not pre-call `restore()` here (avoids corrupt/double restore).
- * Arrays/objects must never be undefined or Excalidraw may throw (e.g. `.length`).
- */
 type SceneBootstrap = {
   elements: unknown[];
   appState: Record<string, unknown>;
@@ -48,33 +52,15 @@ type ExcalidrawElementSkeletonInput = NonNullable<
   Parameters<typeof convertToExcalidrawElements>[0]
 >[number];
 
-import {
-  CELL_GRID_COLS,
-  CELL_GRID_ROWS,
-  CELL_SIZE_PX,
-} from "@/core/constants";
-import type { CellGridDocument } from "@/core/db";
-import {
-  loadGuestDocument,
-  saveGuestCanvasDocument,
-} from "@/core/db";
-import {
-  defaultAlgebraPayload,
-  emptyArithmeticGridDocument,
-  type AlgebraBlockPayload,
-  NOOMA_EMBED_LINK_PREFIX,
-  noomaEmbedLinkForBlock,
-  type NoomaEmbeddableCustomData,
-} from "@/core/noomaBlocks";
-import { ArithmeticGridBlock } from "@/editors/cell-grid/ArithmeticGridBlock";
-
 const SAVE_DEBOUNCE_MS = 350;
 
+const BLANK_BOX_W = 320;
+const BLANK_BOX_H = 200;
+
 /**
- * `convertToExcalidrawElements` does **not** call `newEmbeddableElement` for type
- * `embeddable` — it passes the skeleton through as-is. Missing `strokeColor` /
- * `backgroundColor` breaks hit-testing (`isTransparent(color)` uses `color.length`).
- * Mirrors Excalidraw {@link DEFAULT_ELEMENT_PROPS} / `_newElementBase` defaults.
+ * `convertToExcalidrawElements` does not run `newEmbeddableElement` for
+ * `embeddable` — the skeleton is used as-is. These fields are required for
+ * hit-testing (`isTransparent` expects string colors).
  */
 const EXCALIDRAW_EMBEDDABLE_PAINT = {
   strokeColor: "#1e1e1e",
@@ -88,20 +74,134 @@ const EXCALIDRAW_EMBEDDABLE_PAINT = {
   roundness: null,
 } as const;
 
-/** Ensure paint strings exist on every element (fixes legacy / partial skeletons). */
+/**
+ * Embeddables skip `newEmbeddableElement()` inside `convertToExcalidrawElements`.
+ * Missing `groupIds` breaks runtime code that does `element.groupIds.find(...)`
+ * (no optional chaining) — see Excalidraw source around group selection helpers.
+ */
+const EXCALIDRAW_EMBEDDABLE_STRUCTURE_DEFAULTS = {
+  groupIds: [] as const,
+  frameId: null as string | null,
+  boundElements: null,
+};
+
+const EMBEDDABLE_REQUIRED_KEYS = [
+  "strokeColor",
+  "backgroundColor",
+  "fillStyle",
+  "strokeWidth",
+  "strokeStyle",
+  "roughness",
+  "opacity",
+  "locked",
+  "groupIds",
+] as const;
+
+const isDev = process.env.NODE_ENV !== "production";
+
 function sanitizeElementsPaintColors(elements: unknown[]): unknown[] {
   return elements.map((raw) => {
     if (!raw || typeof raw !== "object") return raw;
     const el = raw as Record<string, unknown>;
-    const stroke =
-      typeof el.strokeColor === "string" ? el.strokeColor : "#1e1e1e";
-    const bg =
-      typeof el.backgroundColor === "string"
-        ? el.backgroundColor
-        : "transparent";
-    if (stroke === el.strokeColor && bg === el.backgroundColor) return raw;
-    return { ...el, strokeColor: stroke, backgroundColor: bg };
+    if (el.type !== "embeddable") {
+      const stroke =
+        typeof el.strokeColor === "string" ? el.strokeColor : "#1e1e1e";
+      const bg =
+        typeof el.backgroundColor === "string"
+          ? el.backgroundColor
+          : "transparent";
+      if (stroke === el.strokeColor && bg === el.backgroundColor) return raw;
+      return { ...el, strokeColor: stroke, backgroundColor: bg };
+    }
+
+    return {
+      ...EXCALIDRAW_EMBEDDABLE_PAINT,
+      ...EXCALIDRAW_EMBEDDABLE_STRUCTURE_DEFAULTS,
+      ...el,
+      strokeColor:
+        typeof el.strokeColor === "string"
+          ? el.strokeColor
+          : EXCALIDRAW_EMBEDDABLE_PAINT.strokeColor,
+      backgroundColor:
+        typeof el.backgroundColor === "string"
+          ? el.backgroundColor
+          : EXCALIDRAW_EMBEDDABLE_PAINT.backgroundColor,
+      fillStyle:
+        typeof el.fillStyle === "string"
+          ? el.fillStyle
+          : EXCALIDRAW_EMBEDDABLE_PAINT.fillStyle,
+      strokeStyle:
+        typeof el.strokeStyle === "string"
+          ? el.strokeStyle
+          : EXCALIDRAW_EMBEDDABLE_PAINT.strokeStyle,
+      strokeWidth:
+        typeof el.strokeWidth === "number"
+          ? el.strokeWidth
+          : EXCALIDRAW_EMBEDDABLE_PAINT.strokeWidth,
+      roughness:
+        typeof el.roughness === "number"
+          ? el.roughness
+          : EXCALIDRAW_EMBEDDABLE_PAINT.roughness,
+      opacity:
+        typeof el.opacity === "number"
+          ? el.opacity
+          : EXCALIDRAW_EMBEDDABLE_PAINT.opacity,
+      locked:
+        typeof el.locked === "boolean"
+          ? el.locked
+          : EXCALIDRAW_EMBEDDABLE_PAINT.locked,
+      groupIds: Array.isArray(el.groupIds) ? el.groupIds : [],
+      frameId: typeof el.frameId === "string" || el.frameId === null ? el.frameId : null,
+      boundElements:
+        el.boundElements === null
+          ? null
+          : Array.isArray(el.boundElements)
+            ? el.boundElements
+            : null,
+    };
   });
+}
+
+function findMalformedEmbeddables(elements: unknown[]): Array<{
+  id: string;
+  noomaBlockType: string;
+  missing: string[];
+}> {
+  const malformed: Array<{
+    id: string;
+    noomaBlockType: string;
+    missing: string[];
+  }> = [];
+
+  for (const raw of elements) {
+    if (!raw || typeof raw !== "object") continue;
+    const el = raw as Record<string, unknown>;
+    if (el.type !== "embeddable") continue;
+    const missing = EMBEDDABLE_REQUIRED_KEYS.filter((key) => {
+      const value = el[key];
+      if (key === "locked") return typeof value !== "boolean";
+      if (key === "groupIds") return !Array.isArray(value);
+      if (key === "strokeWidth" || key === "roughness" || key === "opacity") {
+        return typeof value !== "number";
+      }
+      return typeof value !== "string";
+    });
+    if (missing.length === 0) continue;
+    const customData =
+      el.customData && typeof el.customData === "object"
+        ? (el.customData as Record<string, unknown>)
+        : {};
+    malformed.push({
+      id: typeof el.id === "string" ? el.id : "(missing-id)",
+      noomaBlockType:
+        typeof customData.noomaBlockType === "string"
+          ? customData.noomaBlockType
+          : "(unknown)",
+      missing: [...missing],
+    });
+  }
+
+  return malformed;
 }
 
 function viewportCenterSceneCoords(api: ExcalidrawAPI): {
@@ -127,48 +227,29 @@ function insertEmbeddableNoomaBlock(
   const converted = convertToExcalidrawElements([skeleton], {
     regenerateIds: true,
   });
-  const created = converted[0];
+  const created = sanitizeElementsPaintColors(converted)[0];
   if (!created) return;
-  /** Must include deleted elements or `updateScene` drops them and corrupts the scene. */
+  if (isDev) {
+    const malformed = findMalformedEmbeddables([created]);
+    if (malformed.length > 0) {
+      console.error(
+        "[Nooma] Refusing to insert malformed embeddable element",
+        malformed
+      );
+      return;
+    }
+  }
   api.updateScene({
-    elements: [...api.getSceneElementsIncludingDeleted(), created],
+    elements: [
+      ...api.getSceneElementsIncludingDeleted(),
+      created as unknown as Parameters<ExcalidrawOnChange>[0][number],
+    ],
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   });
 }
 
-function AlgebraEmbeddableSurface({
-  payload,
-  onPayloadChange,
-}: {
-  payload: AlgebraBlockPayload;
-  onPayloadChange: (next: AlgebraBlockPayload) => void;
-}) {
-  return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col gap-2 bg-[var(--background)] p-3 text-[var(--foreground)]">
-      <p className="text-sm font-medium text-[var(--muted-foreground)]">
-        Algebra block
-      </p>
-      <p className="text-xs text-[var(--muted-foreground)]">
-        Placeholder — symbolic algebra UX will plug in here later.
-      </p>
-      <label className="flex flex-1 flex-col gap-1 text-xs">
-        <span className="text-[var(--muted-foreground)]">Scratch note</span>
-        <textarea
-          className="min-h-[72px] flex-1 resize-none rounded-md border border-[var(--border)] bg-[var(--muted)] p-2 font-mono text-sm text-[var(--foreground)] outline-none focus:ring-2 focus:ring-sky-500"
-          value={payload.note}
-          onChange={(e) =>
-            onPayloadChange({ ...payload, note: e.target.value })
-          }
-          spellCheck={false}
-        />
-      </label>
-    </div>
-  );
-}
-
-function migrateLegacyGridToElements(cellGrid: CellGridDocument) {
-  const w = CELL_GRID_COLS * CELL_SIZE_PX + 32;
-  const h = CELL_GRID_ROWS * CELL_SIZE_PX + 32;
+/** Legacy guest doc had only `cellGrid`; migrate to one blank arithmetic embed. */
+function migrateLegacyGridToBlankArithmeticEmbed() {
   return convertToExcalidrawElements(
     [
       {
@@ -176,17 +257,45 @@ function migrateLegacyGridToElements(cellGrid: CellGridDocument) {
         type: "embeddable",
         x: 120,
         y: 120,
-        width: w,
-        height: h,
-        link: noomaEmbedLinkForBlock("arithmetic-grid"),
-        customData: {
-          noomaBlockType: "arithmetic-grid",
-          payload: cellGrid,
-        } satisfies NoomaEmbeddableCustomData,
+        width: BLANK_BOX_W,
+        height: BLANK_BOX_H,
+        link: noomaEmbedLinkForBlock("arithmetic"),
+        customData: { noomaBlockType: "arithmetic" },
       } as unknown as ExcalidrawElementSkeletonInput,
     ],
     { regenerateIds: true }
   );
+}
+
+function BlankArithmeticEmbed() {
+  return (
+    <div
+      className="h-full w-full bg-[var(--background)]"
+      aria-label="Arithmetic block"
+    />
+  );
+}
+
+function BlankAlgebraEmbed() {
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-[var(--background)] p-2 text-center text-sm text-[var(--muted-foreground)]">
+      algebra block here
+    </div>
+  );
+}
+
+/** Old scenes used `arithmetic-grid` + payloads; treat as blank arithmetic. */
+function isArithmeticBlock(
+  data: NoomaEmbeddableCustomData | Record<string, unknown> | undefined
+): boolean {
+  const t = data?.noomaBlockType;
+  return t === "arithmetic" || t === "arithmetic-grid";
+}
+
+function isAlgebraBlock(
+  data: NoomaEmbeddableCustomData | Record<string, unknown> | undefined
+): boolean {
+  return data?.noomaBlockType === "algebra";
 }
 
 export function ExcalidrawCanvasHost() {
@@ -199,6 +308,7 @@ export function ExcalidrawCanvasHost() {
   const [initialPayload, setInitialPayload] = useState<SceneBootstrap | null>(
     null
   );
+  const hasLoggedMalformedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -215,6 +325,16 @@ export function ExcalidrawCanvasHost() {
           const elements = sanitizeElementsPaintColors(
             Array.isArray(raw.elements) ? raw.elements : []
           );
+          if (isDev) {
+            const malformed = findMalformedEmbeddables(elements);
+            if (malformed.length > 0 && !hasLoggedMalformedRef.current) {
+              hasLoggedMalformedRef.current = true;
+              console.warn(
+                "[Nooma] Loaded malformed embeddables from storage. Auto-healing with defaults. If issues persist, clear stale DB: indexedDB.deleteDatabase('nooma-grid'); location.reload();",
+                malformed
+              );
+            }
+          }
           const appState =
             raw.appState &&
             typeof raw.appState === "object" &&
@@ -232,12 +352,12 @@ export function ExcalidrawCanvasHost() {
           setSceneReady(true);
           return;
         } catch {
-          /* fall through to migration / empty */
+          /* fall through */
         }
       }
 
       if (row?.cellGrid?.version === 1) {
-        const elements = migrateLegacyGridToElements(row.cellGrid);
+        const elements = migrateLegacyGridToBlankArithmeticEmbed();
         setInitialPayload({
           elements: [...elements],
           appState: { viewBackgroundColor: "#f8f9fa" },
@@ -263,8 +383,20 @@ export function ExcalidrawCanvasHost() {
     ) => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
+        if (isDev) {
+          const malformed = findMalformedEmbeddables(elements as unknown[]);
+          if (malformed.length > 0) {
+            console.error(
+              "[Nooma] Malformed embeddables detected in onChange. Persisting sanitized scene.",
+              malformed
+            );
+          }
+        }
+        const normalizedElements = sanitizeElementsPaintColors(
+          elements as unknown[]
+        );
         const json = serializeAsJSON(
-          elements as SerializeElementsArg,
+          normalizedElements as unknown as SerializeElementsArg,
           appState,
           files,
           "database"
@@ -282,94 +414,24 @@ export function ExcalidrawCanvasHost() {
     []
   );
 
-  const updateEmbeddableCustomData = useCallback(
-    (
-      elementId: string,
-      nextCustom: NoomaEmbeddableCustomData
-    ) => {
-      const api = apiRef.current;
-      if (!api) return;
-      const elements = api.getSceneElementsIncludingDeleted();
-      const mapped = elements.map((el) => {
-        if (el.id !== elementId || el.type !== "embeddable") return el;
-        return newElementWith(el, {
-          customData: nextCustom as Record<string, unknown>,
-          link: noomaEmbedLinkForBlock(nextCustom.noomaBlockType),
-        });
-      });
-      api.updateScene({
-        elements: mapped,
-        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-      });
-    },
-    []
-  );
-
-  const renderEmbeddable: RenderEmbeddableImpl = useCallback(
-    (element, appState) => {
-      void appState;
-      const embed = element;
-      const data = embed.customData as NoomaEmbeddableCustomData | undefined;
-      if (!data?.noomaBlockType) return null;
-
-      if (data.noomaBlockType === "arithmetic-grid") {
-        const arithPayload = data.payload;
-        const expectedCells =
-          CELL_GRID_ROWS * CELL_GRID_COLS;
-        const safeGrid: CellGridDocument | undefined =
-          arithPayload &&
-          arithPayload.version === 1 &&
-          Array.isArray(arithPayload.cells) &&
-          arithPayload.cells.length === expectedCells &&
-          arithPayload.rows === CELL_GRID_ROWS &&
-          arithPayload.cols === CELL_GRID_COLS
-            ? arithPayload
-            : undefined;
-        return (
-          <div className="h-full w-full overflow-hidden bg-[var(--background)]">
-            <ArithmeticGridBlock
-              key={embed.id}
-              initialGrid={safeGrid ?? emptyArithmeticGridDocument()}
-              onGridChange={(doc) =>
-                updateEmbeddableCustomData(embed.id, {
-                  noomaBlockType: "arithmetic-grid",
-                  payload: doc,
-                })
-              }
-              showHelpText={false}
-              showToolbar={false}
-            />
-          </div>
-        );
-      }
-
-      if (data.noomaBlockType === "algebra") {
-        return (
-          <div className="h-full w-full overflow-hidden">
-            <AlgebraEmbeddableSurface
-              payload={data.payload}
-              onPayloadChange={(next) =>
-                updateEmbeddableCustomData(embed.id, {
-                  noomaBlockType: "algebra",
-                  payload: next,
-                })
-              }
-            />
-          </div>
-        );
-      }
-
-      return null;
-    },
-    [updateEmbeddableCustomData]
-  );
+  const renderEmbeddable: RenderEmbeddableImpl = useCallback((_element) => {
+    const data = _element.customData as
+      | NoomaEmbeddableCustomData
+      | Record<string, unknown>
+      | undefined;
+    if (!data?.noomaBlockType) return null;
+    if (isArithmeticBlock(data)) {
+      return <BlankArithmeticEmbed />;
+    }
+    if (isAlgebraBlock(data)) {
+      return <BlankAlgebraEmbed />;
+    }
+    return null;
+  }, []);
 
   const validateEmbeddable = useCallback((link: string) => {
     return link.startsWith(NOOMA_EMBED_LINK_PREFIX);
   }, []);
-
-  const arithW = CELL_GRID_COLS * CELL_SIZE_PX + 32;
-  const arithH = CELL_GRID_ROWS * CELL_SIZE_PX + 32;
 
   const renderTopRightUI = useCallback(() => {
     return (
@@ -384,19 +446,16 @@ export function ExcalidrawCanvasHost() {
             insertEmbeddableNoomaBlock(api, {
               ...EXCALIDRAW_EMBEDDABLE_PAINT,
               type: "embeddable",
-              x: sceneX - arithW / 2,
-              y: sceneY - arithH / 2,
-              width: arithW,
-              height: arithH,
-              link: noomaEmbedLinkForBlock("arithmetic-grid"),
-              customData: {
-                noomaBlockType: "arithmetic-grid",
-                payload: emptyArithmeticGridDocument(),
-              } satisfies NoomaEmbeddableCustomData,
+              x: sceneX - BLANK_BOX_W / 2,
+              y: sceneY - BLANK_BOX_H / 2,
+              width: BLANK_BOX_W,
+              height: BLANK_BOX_H,
+              link: noomaEmbedLinkForBlock("arithmetic"),
+              customData: { noomaBlockType: "arithmetic" },
             } as unknown as ExcalidrawElementSkeletonInput);
           }}
         >
-          + Arithmetic grid
+          + Arithmetic
         </button>
         <button
           type="button"
@@ -405,20 +464,15 @@ export function ExcalidrawCanvasHost() {
             const api = apiRef.current;
             if (!api) return;
             const { sceneX, sceneY } = viewportCenterSceneCoords(api);
-            const w = 320;
-            const h = 200;
             insertEmbeddableNoomaBlock(api, {
               ...EXCALIDRAW_EMBEDDABLE_PAINT,
               type: "embeddable",
-              x: sceneX - w / 2,
-              y: sceneY - h / 2,
-              width: w,
-              height: h,
+              x: sceneX - BLANK_BOX_W / 2,
+              y: sceneY - BLANK_BOX_H / 2,
+              width: BLANK_BOX_W,
+              height: BLANK_BOX_H,
               link: noomaEmbedLinkForBlock("algebra"),
-              customData: {
-                noomaBlockType: "algebra",
-                payload: defaultAlgebraPayload(),
-              } satisfies NoomaEmbeddableCustomData,
+              customData: { noomaBlockType: "algebra" },
             } as unknown as ExcalidrawElementSkeletonInput);
           }}
         >
@@ -426,7 +480,7 @@ export function ExcalidrawCanvasHost() {
         </button>
       </div>
     );
-  }, [arithH, arithW]);
+  }, []);
 
   const initialData = useMemo(() => {
     if (!initialPayload) return null;
