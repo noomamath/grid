@@ -133,5 +133,10 @@
 
 /* Keep custom embeddable DOM below Excalidraw interactive selection handles. */
 .excalidraw .excalidraw__embeddable-container {
-  z-index: var(--zIndex-canvas);
+  z-index: 1;
+}
+
+/* Hide Excalidraw hyperlink editor/preview UI for custom embeddables. */
+.excalidraw .excalidraw-hyperlinkContainer {
+  display: none !important;
 }

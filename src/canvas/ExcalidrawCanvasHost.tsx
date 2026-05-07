@@ -149,7 +149,21 @@ function sanitizeElementsPaintColors(elements: unknown[]): unknown[] {
       index: typeof el.index === "string" || el.index === null ? el.index : null,
       isDeleted: typeof el.isDeleted === "boolean" ? el.isDeleted : false,
       updated: typeof el.updated === "number" ? el.updated : now,
-      link: typeof el.link === "string" || el.link === null ? el.link : null,
+      link:
+        typeof el.link === "string" && el.link.startsWith(NOOMA_EMBED_LINK_PREFIX)
+          ? el.link
+          : noomaEmbedLinkForBlock(
+              typeof (el.customData as { noomaBlockType?: unknown })?.noomaBlockType ===
+                "string" &&
+                (el.customData as { noomaBlockType?: string }).noomaBlockType ===
+                  "algebra"
+                ? "algebra"
+                : "arithmetic"
+            ),
+      customData:
+        el.customData && typeof el.customData === "object"
+          ? el.customData
+          : ({ noomaBlockType: "arithmetic" } satisfies NoomaEmbeddableCustomData),
       // Always suppress Excalidraw-drawn embeddable styling so only our custom
       // HTML border/fill is visible (selection UI still comes from Excalidraw).
       strokeColor: EXCALIDRAW_EMBEDDABLE_PAINT.strokeColor,
@@ -311,7 +325,7 @@ function migrateLegacyGridToBlankArithmeticEmbed() {
 function BlankArithmeticEmbed() {
   return (
     <div
-      className="box-border h-full w-full border-2 border-neutral-900 bg-[var(--background)]"
+      className="box-border h-full w-full border-4 border-red-700 bg-red-200"
       aria-label="Arithmetic block"
     />
   );
@@ -319,24 +333,10 @@ function BlankArithmeticEmbed() {
 
 function BlankAlgebraEmbed() {
   return (
-    <div className="box-border flex h-full w-full items-center justify-center border-2 border-neutral-900 bg-[var(--background)] p-2 text-center text-sm text-[var(--muted-foreground)]">
+    <div className="box-border flex h-full w-full items-center justify-center border-4 border-red-700 bg-red-200 p-2 text-center text-sm text-red-900">
       algebra block here
     </div>
   );
-}
-
-/** Old scenes used `arithmetic-grid` + payloads; treat as blank arithmetic. */
-function isArithmeticBlock(
-  data: NoomaEmbeddableCustomData | Record<string, unknown> | undefined
-): boolean {
-  const t = data?.noomaBlockType;
-  return t === "arithmetic" || t === "arithmetic-grid";
-}
-
-function isAlgebraBlock(
-  data: NoomaEmbeddableCustomData | Record<string, unknown> | undefined
-): boolean {
-  return data?.noomaBlockType === "algebra";
 }
 
 export function ExcalidrawCanvasHost() {
@@ -460,14 +460,17 @@ export function ExcalidrawCanvasHost() {
       | NoomaEmbeddableCustomData
       | Record<string, unknown>
       | undefined;
-    if (!data?.noomaBlockType) return null;
-    if (isArithmeticBlock(data)) {
+    const inferredType =
+      typeof data?.noomaBlockType === "string"
+        ? data.noomaBlockType
+        : "arithmetic";
+    if (inferredType === "arithmetic" || inferredType === "arithmetic-grid") {
       return <BlankArithmeticEmbed />;
     }
-    if (isAlgebraBlock(data)) {
+    if (inferredType === "algebra") {
       return <BlankAlgebraEmbed />;
     }
-    return null;
+    return <BlankArithmeticEmbed />;
   }, []);
 
   const validateEmbeddable = useCallback((link: string) => {

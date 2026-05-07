@@ -5,7 +5,7 @@ import {
   TOOL_TYPE_GRID,
 } from "./constants";
 
-/** Keyboard-first cell grid persisted locally (replaces legacy tldraw snapshot). */
+/** Keyboard-first cell grid persisted locally. */
 export type CellGridDocument = {
   version: 1;
   rows: number;
@@ -18,8 +18,6 @@ export type NoomaDocumentRow = {
   id: string;
   toolType: typeof TOOL_TYPE_GRID | typeof TOOL_TYPE_CANVAS;
   updatedAt: number;
-  /** @deprecated Legacy tldraw document; kept if present for archival only. */
-  snapshot?: unknown;
   /** Legacy keyboard grid document (superseded by Excalidraw embed payloads). */
   cellGrid?: CellGridDocument;
   /**
@@ -63,7 +61,6 @@ export async function saveGuestCellGrid(cellGrid: CellGridDocument): Promise<voi
     id: GUEST_DOCUMENT_ID,
     toolType: TOOL_TYPE_GRID,
     updatedAt: now,
-    snapshot: existing?.snapshot,
     cellGrid,
     excalidrawFile: existing?.excalidrawFile,
     prefs: existing?.prefs,
@@ -77,7 +74,6 @@ export async function saveGuestCanvasDocument(excalidrawFile: string): Promise<v
     id: GUEST_DOCUMENT_ID,
     toolType: TOOL_TYPE_CANVAS,
     updatedAt: now,
-    snapshot: existing?.snapshot,
     excalidrawFile,
     cellGrid: undefined,
     prefs: existing?.prefs,
