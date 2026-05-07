@@ -63,10 +63,10 @@ const BLANK_BOX_H = 200;
  * hit-testing (`isTransparent` expects string colors).
  */
 const EXCALIDRAW_EMBEDDABLE_PAINT = {
-  strokeColor: "#1e1e1e",
+  strokeColor: "transparent",
   backgroundColor: "transparent",
   fillStyle: "solid",
-  strokeWidth: 2,
+  strokeWidth: 0,
   strokeStyle: "solid",
   roughness: 1,
   opacity: 100,
@@ -150,34 +150,15 @@ function sanitizeElementsPaintColors(elements: unknown[]): unknown[] {
       isDeleted: typeof el.isDeleted === "boolean" ? el.isDeleted : false,
       updated: typeof el.updated === "number" ? el.updated : now,
       link: typeof el.link === "string" || el.link === null ? el.link : null,
-      strokeColor:
-        typeof el.strokeColor === "string"
-          ? el.strokeColor
-          : EXCALIDRAW_EMBEDDABLE_PAINT.strokeColor,
-      backgroundColor:
-        typeof el.backgroundColor === "string"
-          ? el.backgroundColor
-          : EXCALIDRAW_EMBEDDABLE_PAINT.backgroundColor,
-      fillStyle:
-        typeof el.fillStyle === "string"
-          ? el.fillStyle
-          : EXCALIDRAW_EMBEDDABLE_PAINT.fillStyle,
-      strokeStyle:
-        typeof el.strokeStyle === "string"
-          ? el.strokeStyle
-          : EXCALIDRAW_EMBEDDABLE_PAINT.strokeStyle,
-      strokeWidth:
-        typeof el.strokeWidth === "number"
-          ? el.strokeWidth
-          : EXCALIDRAW_EMBEDDABLE_PAINT.strokeWidth,
-      roughness:
-        typeof el.roughness === "number"
-          ? el.roughness
-          : EXCALIDRAW_EMBEDDABLE_PAINT.roughness,
-      opacity:
-        typeof el.opacity === "number"
-          ? el.opacity
-          : EXCALIDRAW_EMBEDDABLE_PAINT.opacity,
+      // Always suppress Excalidraw-drawn embeddable styling so only our custom
+      // HTML border/fill is visible (selection UI still comes from Excalidraw).
+      strokeColor: EXCALIDRAW_EMBEDDABLE_PAINT.strokeColor,
+      backgroundColor: EXCALIDRAW_EMBEDDABLE_PAINT.backgroundColor,
+      fillStyle: EXCALIDRAW_EMBEDDABLE_PAINT.fillStyle,
+      strokeStyle: EXCALIDRAW_EMBEDDABLE_PAINT.strokeStyle,
+      strokeWidth: EXCALIDRAW_EMBEDDABLE_PAINT.strokeWidth,
+      roughness: EXCALIDRAW_EMBEDDABLE_PAINT.roughness,
+      opacity: EXCALIDRAW_EMBEDDABLE_PAINT.opacity,
       locked:
         typeof el.locked === "boolean"
           ? el.locked
@@ -330,7 +311,7 @@ function migrateLegacyGridToBlankArithmeticEmbed() {
 function BlankArithmeticEmbed() {
   return (
     <div
-      className="h-full w-full bg-[var(--background)]"
+      className="box-border h-full w-full border-2 border-neutral-900 bg-[var(--background)]"
       aria-label="Arithmetic block"
     />
   );
@@ -338,7 +319,7 @@ function BlankArithmeticEmbed() {
 
 function BlankAlgebraEmbed() {
   return (
-    <div className="flex h-full w-full items-center justify-center bg-[var(--background)] p-2 text-center text-sm text-[var(--muted-foreground)]">
+    <div className="box-border flex h-full w-full items-center justify-center border-2 border-neutral-900 bg-[var(--background)] p-2 text-center text-sm text-[var(--muted-foreground)]">
       algebra block here
     </div>
   );
