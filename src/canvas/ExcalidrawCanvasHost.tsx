@@ -86,6 +86,19 @@ const EXCALIDRAW_EMBEDDABLE_STRUCTURE_DEFAULTS = {
 };
 
 const EMBEDDABLE_REQUIRED_KEYS = [
+  "id",
+  "x",
+  "y",
+  "width",
+  "height",
+  "angle",
+  "seed",
+  "version",
+  "versionNonce",
+  "index",
+  "isDeleted",
+  "updated",
+  "link",
   "strokeColor",
   "backgroundColor",
   "fillStyle",
@@ -99,7 +112,12 @@ const EMBEDDABLE_REQUIRED_KEYS = [
 
 const isDev = process.env.NODE_ENV !== "production";
 
+function randomInt() {
+  return Math.floor(Math.random() * 2_147_483_647);
+}
+
 function sanitizeElementsPaintColors(elements: unknown[]): unknown[] {
+  const now = Date.now();
   return elements.map((raw) => {
     if (!raw || typeof raw !== "object") return raw;
     const el = raw as Record<string, unknown>;
@@ -118,6 +136,20 @@ function sanitizeElementsPaintColors(elements: unknown[]): unknown[] {
       ...EXCALIDRAW_EMBEDDABLE_PAINT,
       ...EXCALIDRAW_EMBEDDABLE_STRUCTURE_DEFAULTS,
       ...el,
+      id: typeof el.id === "string" ? el.id : crypto.randomUUID(),
+      x: typeof el.x === "number" ? el.x : 0,
+      y: typeof el.y === "number" ? el.y : 0,
+      width: typeof el.width === "number" ? el.width : BLANK_BOX_W,
+      height: typeof el.height === "number" ? el.height : BLANK_BOX_H,
+      angle: typeof el.angle === "number" ? el.angle : 0,
+      seed: typeof el.seed === "number" ? el.seed : randomInt(),
+      version: typeof el.version === "number" ? el.version : 1,
+      versionNonce:
+        typeof el.versionNonce === "number" ? el.versionNonce : randomInt(),
+      index: typeof el.index === "string" || el.index === null ? el.index : null,
+      isDeleted: typeof el.isDeleted === "boolean" ? el.isDeleted : false,
+      updated: typeof el.updated === "number" ? el.updated : now,
+      link: typeof el.link === "string" || el.link === null ? el.link : null,
       strokeColor:
         typeof el.strokeColor === "string"
           ? el.strokeColor
@@ -181,7 +213,25 @@ function findMalformedEmbeddables(elements: unknown[]): Array<{
       const value = el[key];
       if (key === "locked") return typeof value !== "boolean";
       if (key === "groupIds") return !Array.isArray(value);
+      if (key === "isDeleted") return typeof value !== "boolean";
+      if (key === "id" || key === "link")
+        return typeof value !== "string" && value !== null;
+      if (key === "index")
+        return typeof value !== "string" && value !== null;
       if (key === "strokeWidth" || key === "roughness" || key === "opacity") {
+        return typeof value !== "number";
+      }
+      if (
+        key === "x" ||
+        key === "y" ||
+        key === "width" ||
+        key === "height" ||
+        key === "angle" ||
+        key === "seed" ||
+        key === "version" ||
+        key === "versionNonce" ||
+        key === "updated"
+      ) {
         return typeof value !== "number";
       }
       return typeof value !== "string";
@@ -245,6 +295,16 @@ function insertEmbeddableNoomaBlock(
       created as unknown as Parameters<ExcalidrawOnChange>[0][number],
     ],
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+  });
+  // Programmatic scene updates don't always repaint the HTML embed layer on the
+  // same tick. Embeds also gate on viewport visibility + lazy DOM init; the first
+  // paint after `updateScene` can miss `isElementInViewport` until layout settles.
+  // Refresh after microtask + next frame so the embed mounts without a full reload.
+  queueMicrotask(() => {
+    api.refresh();
+    requestAnimationFrame(() => {
+      api.refresh();
+    });
   });
 }
 
