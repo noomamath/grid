@@ -140,3 +140,10 @@
 .excalidraw .excalidraw-hyperlinkContainer {
   display: none !important;
 }
+
+/* Hide Excalidraw library UI (sidebar, header controls); Nooma uses custom embeds. */
+.excalidraw .layer-ui__library,
+.excalidraw .default-sidebar-trigger,
+.excalidraw .default-sidebar {
+  display: none !important;
+}

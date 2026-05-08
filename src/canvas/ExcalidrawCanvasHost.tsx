@@ -531,12 +531,22 @@ export function ExcalidrawCanvasHost() {
     const elements = sanitizeElementsPaintColors(
       Array.isArray(initialPayload.elements) ? initialPayload.elements : []
     );
-    const appState =
+    const rawApp =
       initialPayload.appState &&
       typeof initialPayload.appState === "object" &&
       !Array.isArray(initialPayload.appState)
-        ? initialPayload.appState
+        ? (initialPayload.appState as Record<string, unknown>)
         : {};
+    const appState = { ...rawApp };
+    const openSidebar = appState.openSidebar;
+    if (
+      openSidebar &&
+      typeof openSidebar === "object" &&
+      !Array.isArray(openSidebar) &&
+      (openSidebar as { name?: unknown }).name === "default"
+    ) {
+      appState.openSidebar = null;
+    }
     const files =
       initialPayload.files &&
       typeof initialPayload.files === "object" &&
