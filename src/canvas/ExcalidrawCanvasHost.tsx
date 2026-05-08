@@ -18,6 +18,10 @@ import {
   type ComponentProps,
 } from "react";
 
+import { createPortal } from "react-dom";
+
+import { Plus } from "lucide-react";
+
 import {
   loadGuestDocument,
   saveGuestCanvasDocument,
@@ -25,6 +29,7 @@ import {
 import {
   NOOMA_EMBED_LINK_PREFIX,
   noomaEmbedLinkForBlock,
+  type NoomaBlockType,
   type NoomaEmbeddableCustomData,
 } from "@/core/noomaBlocks";
 
@@ -341,10 +346,12 @@ function BlankAlgebraEmbed() {
 
 export function ExcalidrawCanvasHost() {
   const apiRef = useRef<ExcalidrawAPI | null>(null);
+  const fabAnchorRef = useRef<HTMLDivElement | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined
   );
 
+  const [fabMenuOpen, setFabMenuOpen] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
   const [initialPayload, setInitialPayload] = useState<SceneBootstrap | null>(
     null
@@ -477,66 +484,65 @@ export function ExcalidrawCanvasHost() {
     return link.startsWith(NOOMA_EMBED_LINK_PREFIX);
   }, []);
 
-  const renderTopRightUI = useCallback(() => {
-    return (
-      <div className="flex flex-wrap items-center gap-2 pr-1">
-        <button
-          type="button"
-          className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-sm text-neutral-800 shadow-sm hover:bg-neutral-50"
-          onClick={() => {
-            const api = apiRef.current;
-            if (!api) return;
-            const { sceneX, sceneY } = viewportCenterSceneCoords(api);
-            insertEmbeddableNoomaBlock(api, {
-              ...EXCALIDRAW_EMBEDDABLE_PAINT,
-              type: "embeddable",
-              x: sceneX - BLANK_BOX_W / 2,
-              y: sceneY - BLANK_BOX_H / 2,
-              width: BLANK_BOX_W,
-              height: BLANK_BOX_H,
-              link: noomaEmbedLinkForBlock("arithmetic"),
-              customData: { noomaBlockType: "arithmetic" },
-            } as unknown as ExcalidrawElementSkeletonInput);
-          }}
-        >
-          + Arithmetic
-        </button>
-        <button
-          type="button"
-          className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-sm text-neutral-800 shadow-sm hover:bg-neutral-50"
-          onClick={() => {
-            const api = apiRef.current;
-            if (!api) return;
-            const { sceneX, sceneY } = viewportCenterSceneCoords(api);
-            insertEmbeddableNoomaBlock(api, {
-              ...EXCALIDRAW_EMBEDDABLE_PAINT,
-              type: "embeddable",
-              x: sceneX - BLANK_BOX_W / 2,
-              y: sceneY - BLANK_BOX_H / 2,
-              width: BLANK_BOX_W,
-              height: BLANK_BOX_H,
-              link: noomaEmbedLinkForBlock("algebra"),
-              customData: { noomaBlockType: "algebra" },
-            } as unknown as ExcalidrawElementSkeletonInput);
-          }}
-        >
-          + Algebra
-        </button>
-      </div>
-    );
-  }, []);
+  const insertNoomaBlockAtViewportCenter = useCallback(
+    (blockType: NoomaBlockType) => {
+      const api = apiRef.current;
+      if (!api) return;
+      const { sceneX, sceneY } = viewportCenterSceneCoords(api);
+      insertEmbeddableNoomaBlock(api, {
+        ...EXCALIDRAW_EMBEDDABLE_PAINT,
+        type: "embeddable",
+        x: sceneX - BLANK_BOX_W / 2,
+        y: sceneY - BLANK_BOX_H / 2,
+        width: BLANK_BOX_W,
+        height: BLANK_BOX_H,
+        link: noomaEmbedLinkForBlock(blockType),
+        customData: { noomaBlockType: blockType },
+      } as unknown as ExcalidrawElementSkeletonInput);
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!fabMenuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const el = fabAnchorRef.current;
+      if (el && !el.contains(e.target as Node)) {
+        setFabMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFabMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [fabMenuOpen]);
 
   const initialData = useMemo(() => {
     if (!initialPayload) return null;
     const elements = sanitizeElementsPaintColors(
       Array.isArray(initialPayload.elements) ? initialPayload.elements : []
     );
-    const appState =
+    const rawApp =
       initialPayload.appState &&
       typeof initialPayload.appState === "object" &&
       !Array.isArray(initialPayload.appState)
-        ? initialPayload.appState
+        ? (initialPayload.appState as Record<string, unknown>)
         : {};
+    const appState = { ...rawApp };
+    const openSidebar = appState.openSidebar;
+    if (
+      openSidebar &&
+      typeof openSidebar === "object" &&
+      !Array.isArray(openSidebar) &&
+      (openSidebar as { name?: unknown }).name === "default"
+    ) {
+      appState.openSidebar = null;
+    }
     const files =
       initialPayload.files &&
       typeof initialPayload.files === "object" &&
@@ -563,24 +569,71 @@ export function ExcalidrawCanvasHost() {
   }
 
   return (
-    <div className="h-[100dvh] w-full overflow-hidden bg-[var(--background)]">
+    <div className="nooma-excalidraw-host relative h-[100dvh] w-full overflow-hidden bg-[var(--background)]">
       <Excalidraw
+        aiEnabled={false}
         excalidrawAPI={(api) => {
           apiRef.current = api;
         }}
         initialData={initialData}
         validateEmbeddable={validateEmbeddable}
         renderEmbeddable={renderEmbeddable}
-        renderTopRightUI={renderTopRightUI}
         onChange={(elements, appState, files) => {
           schedulePersist(elements, appState, files);
         }}
         UIOptions={{
           canvasActions: {
             loadScene: false,
+            changeViewBackgroundColor: false,
           },
         }}
       />
+      {/* Portaled above Excalidraw’s own body portals (layer UI ~1000). Host is client-only (dynamic ssr:false). */}
+      {createPortal(
+        <div ref={fabAnchorRef} className="nooma-toolbar-fab-anchor">
+          {fabMenuOpen ? (
+            <div
+              role="menu"
+              aria-label="Block type"
+              className="absolute bottom-full left-1/2 z-[116] mb-2 flex min-w-[10.5rem] -translate-x-1/2 flex-col gap-1 rounded-lg border border-neutral-200 bg-white p-1.5 shadow-lg"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="rounded-md px-2 py-1.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
+                onClick={() => {
+                  insertNoomaBlockAtViewportCenter("arithmetic");
+                  setFabMenuOpen(false);
+                }}
+              >
+                Arithmetic
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="rounded-md px-2 py-1.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
+                onClick={() => {
+                  insertNoomaBlockAtViewportCenter("algebra");
+                  setFabMenuOpen(false);
+                }}
+              >
+                Algebra
+              </button>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="nooma-toolbar-fab"
+            aria-label="Add block"
+            aria-expanded={fabMenuOpen}
+            aria-haspopup="menu"
+            onClick={() => setFabMenuOpen((open) => !open)}
+          >
+            <Plus className="h-[42%] w-[42%]" strokeWidth={2.5} aria-hidden />
+          </button>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
