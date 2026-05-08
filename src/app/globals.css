@@ -147,3 +147,161 @@
 .excalidraw .default-sidebar {
   display: none !important;
 }
+
+/* Main menu: hide “Excalidraw links” (GitHub / X / Discord) and its separator rails. */
+.excalidraw
+  div:has(+ .dropdown-menu-group:has(a[href="https://github.com/excalidraw/excalidraw"])) {
+  display: none !important;
+}
+.excalidraw .dropdown-menu-group:has(a[href="https://github.com/excalidraw/excalidraw"]) {
+  display: none !important;
+}
+.excalidraw
+  .dropdown-menu-group:has(a[href="https://github.com/excalidraw/excalidraw"])
+  + div {
+  display: none !important;
+}
+
+/*
+ * Pin the shape tool strip above the footer (no Excalidraw API for this).
+ * Do not set position:relative on .App-menu_top — it shrinks to header height and
+ * traps bottom:… so the bar sits under the top chrome. Anchor to .FixedSideContainer.
+ * Footer uses z-index:100; stay above it. Default: 16px from viewport bottom.
+ */
+/*
+ * :root: toolbar/FAB variables must live here too — the FAB is portaled to
+ * document.body (above Excalidraw’s own portaled layer UI) and won’t inherit
+ * from .nooma-excalidraw-host.
+ */
+:root,
+.nooma-excalidraw-host,
+.excalidraw {
+  --nooma-toolbar-bottom-offset: 0px;
+  /* Space between arrow and line tools for the center FAB */
+  --nooma-toolbar-fab-gap: 100px;
+  --nooma-toolbar-fab-size: 94px;
+  /* Raise center of FAB to sit on the toolbar row (tune with toolbar offset). */
+  --nooma-toolbar-fab-vertical-adjust: 2.25rem;
+  /* Footer strip: tuck undo/redo left; give zoom space from the right edge */
+  --nooma-footer-padding-inline-start: 0.375rem;
+  --nooma-footer-padding-inline-end: 1.5rem;
+  --nooma-footer-zoom-inset-end: 0.75rem;
+}
+/*
+ * Shape tools: data-testid lives on the hidden radio <input>, not the <label>.
+ * Margin on [data-testid] did nothing — target label.Shape:has(...).
+ * Diamond: @excalidraw rebuilds UIOptions.tools to only { image }, so hide via CSS.
+ */
+.excalidraw .App-toolbar-container label.Shape:has(input[data-testid="toolbar-diamond"]) {
+  display: none !important;
+}
+.excalidraw .App-toolbar-container label.Shape:has(input[data-testid="toolbar-arrow"]) {
+  margin-inline-end: var(--nooma-toolbar-fab-gap) !important;
+}
+.excalidraw .shapes-section {
+  position: absolute;
+  left: 50%;
+  bottom: var(--nooma-toolbar-bottom-offset);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(100vw - 2rem, 60rem);
+  z-index: 110;
+}
+/* Toolbar hint (“move canvas…”). Delete this block to show it again. */
+.excalidraw .HintViewer {
+  display: none !important;
+}
+
+/* Extra tools (⋯) submenu: default is top:100% (below); dock toolbar at bottom → open above. */
+.excalidraw .App-toolbar__extra-tools-dropdown.dropdown-menu {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 0.375rem;
+}
+
+/*
+ * More tools (⋯): hide “Generate” row + all items after it (Mermaid, AI / TTD).
+ * Heading is a bare div with inline font-weight:600 (see Excalidraw ShapesSwitcher).
+ */
+.excalidraw
+  .App-toolbar__extra-tools-dropdown
+  .dropdown-menu-container
+  > div[style*="font-weight: 600"],
+.excalidraw
+  .App-toolbar__extra-tools-dropdown
+  .dropdown-menu-container
+  > div[style*="font-weight:600"] {
+  display: none !important;
+}
+.excalidraw
+  .App-toolbar__extra-tools-dropdown
+  .dropdown-menu-container
+  > div[style*="font-weight: 600"]
+  ~ *,
+.excalidraw
+  .App-toolbar__extra-tools-dropdown
+  .dropdown-menu-container
+  > div[style*="font-weight:600"]
+  ~ * {
+  display: none !important;
+}
+
+/* Numeric shortcut hints on toolbar icons (bottom-right). */
+.excalidraw .App-toolbar-container .ToolIcon__keybinding {
+  display: none !important;
+}
+
+/*
+ * FAB is portaled to body (see ExcalidrawCanvasHost) so it isn’t covered by
+ * Excalidraw’s portaled layer UI (z-index ~1000+). Stay below toasts (999999).
+ */
+.nooma-toolbar-fab-anchor {
+  position: fixed;
+  z-index: 10050;
+  left: 50%;
+  width: var(--nooma-toolbar-fab-size);
+  height: var(--nooma-toolbar-fab-size);
+  bottom: calc(
+    var(--nooma-toolbar-bottom-offset) + var(--nooma-toolbar-fab-vertical-adjust)
+  );
+  transform: translate(-50%, 50%);
+  pointer-events: auto;
+}
+.nooma-toolbar-fab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  border: none;
+  cursor: pointer;
+  color: white;
+  background: var(--nooma-toolbar-fab-bg, oklch(0.52 0.19 264));
+  box-shadow:
+    0 4px 20px oklch(0.55 0.2 280 / 0.35),
+    0 2px 8px oklch(0 0 0 / 0.12);
+}
+.nooma-toolbar-fab:hover {
+  filter: brightness(1.05);
+}
+.nooma-toolbar-fab:focus-visible {
+  outline: 2px solid oklch(0.55 0.2 264);
+  outline-offset: 3px;
+}
+
+/* Footer: hide help; pin zoom to bottom-end; undo/redo stay bottom-start (normal flow). */
+.excalidraw button.help-icon {
+  display: none !important;
+}
+.excalidraw .App-menu_bottom {
+  padding-inline-start: var(--nooma-footer-padding-inline-start) !important;
+  padding-inline-end: var(--nooma-footer-padding-inline-end) !important;
+}
+.excalidraw .App-menu_bottom .zoom-actions {
+  position: absolute;
+  inset-inline-end: var(--nooma-footer-zoom-inset-end);
+  bottom: 0;
+  z-index: 102;
+}
