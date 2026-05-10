@@ -261,6 +261,59 @@ function findMalformedEmbeddables(elements: unknown[]): Array<{
   return malformed;
 }
 
+function arithmeticRowCountFromCustomData(customData: unknown): number | null {
+  if (!customData || typeof customData !== "object" || Array.isArray(customData)) {
+    return null;
+  }
+  const data = customData as Record<string, unknown>;
+  if (
+    data.noomaBlockType !== "arithmetic" &&
+    data.noomaBlockType !== "arithmetic-grid"
+  ) {
+    return null;
+  }
+  const arithmetic = data.arithmetic;
+  if (!arithmetic || typeof arithmetic !== "object" || Array.isArray(arithmetic)) {
+    return DEFAULT_ARITHMETIC_BOX_STATE.rows.length;
+  }
+  const rows = (arithmetic as { rows?: unknown }).rows;
+  return Array.isArray(rows)
+    ? Math.max(rows.length, DEFAULT_ARITHMETIC_BOX_STATE.rows.length)
+    : DEFAULT_ARITHMETIC_BOX_STATE.rows.length;
+}
+
+function clampArithmeticEmbeddableHeights<
+  T extends {
+    height: number;
+    version?: number;
+    customData?: unknown;
+    versionNonce?: number;
+    updated?: number;
+  },
+>(
+  elements: readonly T[]
+): { elements: T[]; changed: boolean } {
+  let changed = false;
+  const now = Date.now();
+  const next = elements.map((element) => {
+    const rowCount = arithmeticRowCountFromCustomData(element.customData);
+    if (rowCount === null) return element;
+
+    const minimumHeight = arithmeticBoxHeightForRows(rowCount);
+    if (element.height >= minimumHeight) return element;
+
+    changed = true;
+    return {
+      ...element,
+      height: minimumHeight,
+      version: typeof element.version === "number" ? element.version + 1 : 1,
+      versionNonce: randomInt(),
+      updated: now,
+    };
+  });
+  return { elements: next, changed };
+}
+
 function viewportCenterSceneCoords(api: ExcalidrawAPI): {
   sceneX: number;
   sceneY: number;
@@ -465,7 +518,7 @@ export function ExcalidrawCanvasHost() {
       const api = apiRef.current;
       if (!api) return;
 
-      const expectedHeight = arithmeticBoxHeightForRows(arithmetic.rows.length);
+      const minimumHeight = arithmeticBoxHeightForRows(arithmetic.rows.length);
       const now = Date.now();
       const elements = api.getSceneElementsIncludingDeleted().map((element) => {
         if (element.id !== elementId) return element;
@@ -477,7 +530,7 @@ export function ExcalidrawCanvasHost() {
             : {};
         return {
           ...element,
-          height: expectedHeight,
+          height: Math.max(element.height, minimumHeight),
           customData: {
             ...rawCustomData,
             noomaBlockType: "arithmetic",
@@ -646,7 +699,14 @@ export function ExcalidrawCanvasHost() {
         validateEmbeddable={validateEmbeddable}
         renderEmbeddable={renderEmbeddable}
         onChange={(elements, appState, files) => {
-          schedulePersist(elements, appState, files);
+          const clamped = clampArithmeticEmbeddableHeights(elements);
+          if (clamped.changed) {
+            apiRef.current?.updateScene({
+              elements: clamped.elements,
+              captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+            });
+          }
+          schedulePersist(clamped.elements, appState, files);
         }}
         UIOptions={{
           canvasActions: {

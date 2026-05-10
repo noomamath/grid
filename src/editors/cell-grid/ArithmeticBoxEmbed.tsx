@@ -123,8 +123,8 @@ export function ArithmeticBoxEmbed({
   }, [activeCell.place, normalizedState.annotations, rows]);
 
   useEffect(() => {
-    const expectedHeight = arithmeticBoxHeightForRows(rows.length);
-    if (Math.abs(elementHeight - expectedHeight) > 0.5) {
+    const minimumHeight = arithmeticBoxHeightForRows(rows.length);
+    if (elementHeight < minimumHeight) {
       onChange(normalizedState);
     }
   }, [elementHeight, normalizedState, onChange, rows.length]);
@@ -280,20 +280,17 @@ export function ArithmeticBoxEmbed({
   return (
     <div
       ref={boxRef}
-      className="nooma-math-card box-border flex h-full w-full flex-col overflow-hidden p-2 font-mono text-neutral-950 outline-none"
-      style={{ minHeight: arithmeticBoxHeightForRows(rows.length) }}
+      className="nooma-math-card nooma-arithmetic-card box-border flex h-full w-full flex-col overflow-hidden p-2 font-mono text-neutral-950 outline-none"
       role="application"
       aria-label="Arithmetic card"
       tabIndex={0}
       onKeyDown={onKeyDown}
-      onPointerDown={(event) => {
-        event.stopPropagation();
-        focusBox();
-      }}
     >
       <div className="mb-1 flex items-center justify-between gap-2 font-sans text-[10px] text-neutral-500">
         <span>
-          {carryMode ? "Type a carry digit" : "Digits, arrows, Enter, \\"}
+          {carryMode
+            ? "Type a carry digit"
+            : "Drag blank space; click digits to edit"}
         </span>
         <button
           type="button"
@@ -314,7 +311,7 @@ export function ArithmeticBoxEmbed({
         </button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col justify-center">
+      <div className="flex min-h-0 flex-1 flex-col justify-end">
         {rows.map((row, rowIndex) => {
           const isBarRow = rowIndex === lastAddendRowIndex;
           return (

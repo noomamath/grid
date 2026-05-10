@@ -141,9 +141,14 @@
   display: none !important;
 }
 
+/* Nooma blocks provide their own affordances; suppress Excalidraw's generic embed prompt. */
+.excalidraw .excalidraw__embeddable-hint {
+  display: none !important;
+}
+
 /* Shared base styling for embedded Nooma math cards. */
 .excalidraw .nooma-math-card {
-  border: 1px solid #554ecd;
+  border: 2px solid #554ecd;
   border-radius: 8px !important;
   background: #ffffff;
   box-shadow: 0 2px 2px oklch(0.38 0.03 272 / 0.20);
@@ -152,6 +157,19 @@
 
 .excalidraw .nooma-math-card button {
   pointer-events: auto;
+}
+
+.excalidraw .nooma-math-card.nooma-arithmetic-card,
+.excalidraw .nooma-math-card.nooma-arithmetic-card * {
+  pointer-events: none;
+}
+
+.excalidraw .nooma-math-card.nooma-arithmetic-card button {
+  pointer-events: auto;
+}
+
+.excalidraw .nooma-math-card.nooma-arithmetic-card button * {
+  pointer-events: none;
 }
 
 /* Hide Excalidraw library UI (sidebar, header controls); Nooma uses custom embeds. */
