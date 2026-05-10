@@ -22,13 +22,17 @@ import { createPortal } from "react-dom";
 
 import { Plus } from "lucide-react";
 
+import { ArithmeticBoxEmbed } from "@/editors/cell-grid/ArithmeticBoxEmbed";
 import {
   loadGuestDocument,
   saveGuestCanvasDocument,
 } from "@/core/db";
 import {
+  DEFAULT_ARITHMETIC_BOX_STATE,
   NOOMA_EMBED_LINK_PREFIX,
+  arithmeticBoxHeightForRows,
   noomaEmbedLinkForBlock,
+  type ArithmeticBoxState,
   type NoomaBlockType,
   type NoomaEmbeddableCustomData,
 } from "@/core/noomaBlocks";
@@ -61,6 +65,9 @@ const SAVE_DEBOUNCE_MS = 350;
 
 const BLANK_BOX_W = 320;
 const BLANK_BOX_H = 200;
+const DEFAULT_ARITHMETIC_BOX_H = arithmeticBoxHeightForRows(
+  DEFAULT_ARITHMETIC_BOX_STATE.rows.length
+);
 
 /**
  * `convertToExcalidrawElements` does not run `newEmbeddableElement` for
@@ -318,21 +325,12 @@ function migrateLegacyGridToBlankArithmeticEmbed() {
         x: 120,
         y: 120,
         width: BLANK_BOX_W,
-        height: BLANK_BOX_H,
+        height: DEFAULT_ARITHMETIC_BOX_H,
         link: noomaEmbedLinkForBlock("arithmetic"),
         customData: { noomaBlockType: "arithmetic" },
       } as unknown as ExcalidrawElementSkeletonInput,
     ],
     { regenerateIds: true }
-  );
-}
-
-function BlankArithmeticEmbed() {
-  return (
-    <div
-      className="nooma-math-card box-border h-full w-full"
-      aria-label="Arithmetic card"
-    />
   );
 }
 
@@ -462,23 +460,91 @@ export function ExcalidrawCanvasHost() {
     []
   );
 
-  const renderEmbeddable: RenderEmbeddableImpl = useCallback((_element) => {
-    const data = _element.customData as
-      | NoomaEmbeddableCustomData
-      | Record<string, unknown>
-      | undefined;
-    const inferredType =
-      typeof data?.noomaBlockType === "string"
-        ? data.noomaBlockType
-        : "arithmetic";
-    if (inferredType === "arithmetic" || inferredType === "arithmetic-grid") {
-      return <BlankArithmeticEmbed />;
-    }
-    if (inferredType === "algebra") {
-      return <BlankAlgebraEmbed />;
-    }
-    return <BlankArithmeticEmbed />;
-  }, []);
+  const updateArithmeticEmbeddable = useCallback(
+    (elementId: string, arithmetic: ArithmeticBoxState) => {
+      const api = apiRef.current;
+      if (!api) return;
+
+      const expectedHeight = arithmeticBoxHeightForRows(arithmetic.rows.length);
+      const now = Date.now();
+      const elements = api.getSceneElementsIncludingDeleted().map((element) => {
+        if (element.id !== elementId) return element;
+        const rawCustomData =
+          element.customData &&
+          typeof element.customData === "object" &&
+          !Array.isArray(element.customData)
+            ? (element.customData as Record<string, unknown>)
+            : {};
+        return {
+          ...element,
+          height: expectedHeight,
+          customData: {
+            ...rawCustomData,
+            noomaBlockType: "arithmetic",
+            arithmetic,
+          } satisfies NoomaEmbeddableCustomData,
+          version: element.version + 1,
+          versionNonce: randomInt(),
+          updated: now,
+        };
+      });
+
+      api.updateScene({
+        elements,
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      queueMicrotask(() => {
+        api.refresh();
+        requestAnimationFrame(() => {
+          api.refresh();
+        });
+      });
+    },
+    []
+  );
+
+  const renderEmbeddable: RenderEmbeddableImpl = useCallback(
+    (_element) => {
+      const data = _element.customData as
+        | NoomaEmbeddableCustomData
+        | Record<string, unknown>
+        | undefined;
+      const inferredType =
+        typeof data?.noomaBlockType === "string"
+          ? data.noomaBlockType
+          : "arithmetic";
+      if (inferredType === "arithmetic" || inferredType === "arithmetic-grid") {
+        const arithmetic =
+          data &&
+          "arithmetic" in data &&
+          data.arithmetic &&
+          typeof data.arithmetic === "object"
+            ? (data.arithmetic as ArithmeticBoxState)
+            : undefined;
+        return (
+          <ArithmeticBoxEmbed
+            state={arithmetic}
+            elementHeight={_element.height}
+            onChange={(nextState) =>
+              updateArithmeticEmbeddable(_element.id, nextState)
+            }
+          />
+        );
+      }
+      if (inferredType === "algebra") {
+        return <BlankAlgebraEmbed />;
+      }
+      return (
+        <ArithmeticBoxEmbed
+          elementHeight={_element.height}
+          onChange={(nextState) =>
+            updateArithmeticEmbeddable(_element.id, nextState)
+          }
+        />
+      );
+    },
+    [updateArithmeticEmbeddable]
+  );
 
   const validateEmbeddable = useCallback((link: string) => {
     return link.startsWith(NOOMA_EMBED_LINK_PREFIX);
@@ -495,7 +561,8 @@ export function ExcalidrawCanvasHost() {
         x: sceneX - BLANK_BOX_W / 2,
         y: sceneY - BLANK_BOX_H / 2,
         width: BLANK_BOX_W,
-        height: BLANK_BOX_H,
+        height:
+          blockType === "arithmetic" ? DEFAULT_ARITHMETIC_BOX_H : BLANK_BOX_H,
         link: noomaEmbedLinkForBlock(blockType),
         customData: { noomaBlockType: blockType },
       } as unknown as ExcalidrawElementSkeletonInput);

@@ -133,7 +133,7 @@
 
 /* Keep custom embeddable DOM below Excalidraw interactive selection handles. */
 .excalidraw .excalidraw__embeddable-container {
-  z-index: 1;
+  z-index: 2;
 }
 
 /* Hide Excalidraw hyperlink editor/preview UI for custom embeddables. */
@@ -147,6 +147,11 @@
   border-radius: 8px !important;
   background: #ffffff;
   box-shadow: 0 2px 2px oklch(0.38 0.03 272 / 0.20);
+  pointer-events: auto;
+}
+
+.excalidraw .nooma-math-card button {
+  pointer-events: auto;
 }
 
 /* Hide Excalidraw library UI (sidebar, header controls); Nooma uses custom embeds. */
