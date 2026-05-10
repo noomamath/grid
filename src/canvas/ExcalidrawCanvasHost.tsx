@@ -330,16 +330,16 @@ function migrateLegacyGridToBlankArithmeticEmbed() {
 function BlankArithmeticEmbed() {
   return (
     <div
-      className="box-border h-full w-full border-4 border-red-700 bg-red-200"
-      aria-label="Arithmetic block"
+      className="nooma-math-card box-border h-full w-full"
+      aria-label="Arithmetic card"
     />
   );
 }
 
 function BlankAlgebraEmbed() {
   return (
-    <div className="box-border flex h-full w-full items-center justify-center border-4 border-red-700 bg-red-200 p-2 text-center text-sm text-red-900">
-      algebra block here
+    <div className="nooma-math-card box-border flex h-full w-full items-center justify-center p-2 text-center text-sm text-neutral-700">
+      algebra card here
     </div>
   );
 }

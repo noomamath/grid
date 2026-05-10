@@ -141,6 +141,14 @@
   display: none !important;
 }
 
+/* Shared base styling for embedded Nooma math cards. */
+.excalidraw .nooma-math-card {
+  border: 1px solid #554ecd;
+  border-radius: 8px !important;
+  background: #ffffff;
+  box-shadow: 0 2px 2px oklch(0.38 0.03 272 / 0.20);
+}
+
 /* Hide Excalidraw library UI (sidebar, header controls); Nooma uses custom embeds. */
 .excalidraw .layer-ui__library,
 .excalidraw .default-sidebar-trigger,
