@@ -4,6 +4,7 @@ import {
   CaptureUpdateAction,
   convertToExcalidrawElements,
   Excalidraw,
+  Footer,
   serializeAsJSON,
 } from "@excalidraw/excalidraw";
 
@@ -22,6 +23,7 @@ import { createPortal } from "react-dom";
 
 import { Plus } from "lucide-react";
 
+import { Switch } from "@/components/ui/switch";
 import { ArithmeticBoxEmbed } from "@/editors/cell-grid/ArithmeticBoxEmbed";
 import {
   loadGuestDocument,
@@ -62,6 +64,12 @@ type ExcalidrawElementSkeletonInput = NonNullable<
 >[number];
 
 const SAVE_DEBOUNCE_MS = 350;
+
+/** Merged under saved `appState` so older documents pick up new defaults unless overridden. */
+const NOOMA_EXCALIDRAW_APP_DEFAULTS: Record<string, unknown> = {
+  viewBackgroundColor: "#f8f9fa",
+  gridModeEnabled: true,
+};
 
 const BLANK_BOX_W = 320;
 const BLANK_BOX_H = 200;
@@ -424,6 +432,9 @@ export function ExcalidrawCanvasHost() {
   );
 
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
+  const [gridModeOn, setGridModeOn] = useState(
+    NOOMA_EXCALIDRAW_APP_DEFAULTS.gridModeEnabled === true
+  );
   const [sceneReady, setSceneReady] = useState(false);
   const [initialPayload, setInitialPayload] = useState<SceneBootstrap | null>(
     null
@@ -480,7 +491,7 @@ export function ExcalidrawCanvasHost() {
         const elements = migrateLegacyGridToBlankArithmeticEmbed();
         setInitialPayload({
           elements: [...elements],
-          appState: { viewBackgroundColor: "#f8f9fa" },
+          appState: { ...NOOMA_EXCALIDRAW_APP_DEFAULTS },
           files: {},
         });
         setSceneReady(true);
@@ -677,7 +688,7 @@ export function ExcalidrawCanvasHost() {
       !Array.isArray(initialPayload.appState)
         ? (initialPayload.appState as Record<string, unknown>)
         : {};
-    const appState = { ...rawApp };
+    const appState = { ...NOOMA_EXCALIDRAW_APP_DEFAULTS, ...rawApp };
     const openSidebar = appState.openSidebar;
     if (
       openSidebar &&
@@ -718,11 +729,13 @@ export function ExcalidrawCanvasHost() {
         aiEnabled={false}
         excalidrawAPI={(api) => {
           apiRef.current = api;
+          setGridModeOn(api.getAppState().gridModeEnabled === true);
         }}
         initialData={initialData}
         validateEmbeddable={validateEmbeddable}
         renderEmbeddable={renderEmbeddable}
         onChange={(elements, appState, files) => {
+          setGridModeOn(appState.gridModeEnabled === true);
           const clamped = clampArithmeticEmbeddableHeights(elements);
           if (clamped.changed) {
             apiRef.current?.updateScene({
@@ -738,7 +751,34 @@ export function ExcalidrawCanvasHost() {
             changeViewBackgroundColor: false,
           },
         }}
-      />
+      >
+        <Footer>
+          <label
+            className="nooma-footer-grid-control inline-flex cursor-pointer items-center gap-2 self-center select-none"
+            title="Toggle background grid (⌘/Ctrl+')"
+          >
+            <span className="text-sm font-medium leading-snug text-neutral-700">
+              Grid
+            </span>
+            <Switch
+              checked={gridModeOn}
+              size="sm"
+              className="shrink-0 border border-neutral-200/80 data-checked:border-[#554ecd] data-checked:bg-[#554ecd] data-unchecked:bg-neutral-100 dark:data-unchecked:bg-neutral-200"
+              onPointerDown={(e) => e.stopPropagation()}
+              onCheckedChange={(checked) => {
+                const api = apiRef.current;
+                if (!api) return;
+                api.updateScene({
+                  appState: {
+                    gridModeEnabled: checked,
+                    objectsSnapModeEnabled: false,
+                  },
+                });
+              }}
+            />
+          </label>
+        </Footer>
+      </Excalidraw>
       {/* Portaled above Excalidraw’s own body portals (layer UI ~1000). Host is client-only (dynamic ssr:false). */}
       {createPortal(
         <div ref={fabAnchorRef} className="nooma-toolbar-fab-anchor">

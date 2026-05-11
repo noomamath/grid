@@ -297,6 +297,8 @@
 
 /*
  * More tools (⋯): hide “Generate” row + all items after it (Mermaid, AI / TTD).
+ * Scoped to `.App-toolbar__extra-tools-dropdown` only — does not affect the canvas
+ * dot grid (`gridModeEnabled`) or the main hamburger / command-palette toggles.
  * Heading is a bare div with inline font-weight:600 (see Excalidraw ShapesSwitcher).
  */
 .excalidraw
@@ -371,12 +373,26 @@
   display: none !important;
 }
 .excalidraw .App-menu_bottom {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
   padding-inline-start: var(--nooma-footer-padding-inline-start) !important;
   padding-inline-end: var(--nooma-footer-padding-inline-end) !important;
+}
+/* Footer tunnel for custom UI (Grid switch): same vertical centerline as undo/redo row. */
+.excalidraw .footer-center {
+  display: flex;
+  align-items: center;
 }
 .excalidraw .App-menu_bottom .zoom-actions {
   position: absolute;
   inset-inline-end: var(--nooma-footer-zoom-inset-end);
   bottom: 0;
   z-index: 102;
+}
+
+/* Footer: Nooma “Grid” row (shadcn Switch) in Excalidraw’s Footer tunnel. */
+.excalidraw .nooma-footer-grid-control {
+  margin-inline-start: 1rem;
+  transform: translateY(8px);
 }
