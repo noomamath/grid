@@ -43,6 +43,9 @@ function cloneState(state: ArithmeticBoxState): ArithmeticBoxState {
     version: 1,
     rows: [...state.rows],
     annotations: { ...state.annotations },
+    ...(state.answerByPlace
+      ? { answerByPlace: { ...state.answerByPlace } }
+      : {}),
   };
 }
 
@@ -73,6 +76,47 @@ export function normalizeArithmeticBoxState(
     rows.push("");
   }
 
+  const answerIdx = rows.length - 1;
+
+  let answerByPlace: Record<string, string> | undefined;
+
+  if (
+    state?.version === 1 &&
+    state.answerByPlace &&
+    typeof state.answerByPlace === "object" &&
+    !Array.isArray(state.answerByPlace)
+  ) {
+    answerByPlace = {};
+    for (const [k, v] of Object.entries(state.answerByPlace)) {
+      if (!/^\d+$/.test(k)) continue;
+      if (typeof v === "string" && /^\d$/.test(v)) {
+        answerByPlace[k] = v;
+      }
+    }
+    if (Object.keys(answerByPlace).length === 0) {
+      answerByPlace = undefined;
+    }
+  }
+
+  if (!answerByPlace && rows[answerIdx].length > 0) {
+    const compact = rows[answerIdx];
+    answerByPlace = {};
+    for (let i = 0; i < compact.length; i++) {
+      const ch = compact[i];
+      if (!/^\d$/.test(ch)) continue;
+      const place = compact.length - 1 - i;
+      answerByPlace[String(place)] = ch;
+    }
+    rows[answerIdx] = "";
+    if (Object.keys(answerByPlace).length === 0) {
+      answerByPlace = undefined;
+    }
+  }
+
+  if (answerByPlace && rows[answerIdx].length > 0) {
+    rows[answerIdx] = "";
+  }
+
   const annotations: Record<string, ArithmeticAnnotation> = {};
   const rawAnnotations =
     state?.version === 1 &&
@@ -88,7 +132,12 @@ export function normalizeArithmeticBoxState(
     if (annotation) annotations[key] = annotation;
   }
 
-  return { version: 1, rows, annotations };
+  return {
+    version: 1,
+    rows,
+    annotations,
+    ...(answerByPlace ? { answerByPlace } : {}),
+  };
 }
 
 export function ArithmeticBoxEmbed({
@@ -119,8 +168,12 @@ export function ArithmeticBoxEmbed({
       const place = Number(placeRaw);
       if (Number.isInteger(place)) maxPlace = Math.max(maxPlace, place + 1);
     }
+    for (const key of Object.keys(normalizedState.answerByPlace ?? {})) {
+      const place = Number(key);
+      if (Number.isInteger(place)) maxPlace = Math.max(maxPlace, place + 1);
+    }
     return maxPlace;
-  }, [activeCell.place, normalizedState.annotations, rows]);
+  }, [activeCell.place, normalizedState.annotations, normalizedState.answerByPlace, rows]);
 
   useEffect(() => {
     const minimumHeight = arithmeticBoxHeightForRows(rows.length);
@@ -170,6 +223,39 @@ export function ArithmeticBoxEmbed({
     [focusBox]
   );
 
+  const onAnswerRowPointerDown = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      event.stopPropagation();
+      const rect = event.currentTarget.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const rowWidth = rect.width;
+      const gridContentWidth =
+        OPERATOR_COL_WIDTH + visiblePlaces * DIGIT_CELL_WIDTH;
+      const gridStartX = Math.max(0, rowWidth - gridContentWidth);
+      const relativeX = x - gridStartX;
+
+      if (relativeX < 0) {
+        setActive({ row: answerRowIndex, place: visiblePlaces - 1 });
+        focusBox();
+        return;
+      }
+
+      const offsetFromDigits = relativeX - OPERATOR_COL_WIDTH;
+      if (offsetFromDigits < 0) {
+        focusBox();
+        return;
+      }
+
+      let col = Math.floor(offsetFromDigits / DIGIT_CELL_WIDTH);
+      if (col >= visiblePlaces) col = visiblePlaces - 1;
+      if (col < 0) col = 0;
+      const place = visiblePlaces - col - 1;
+      setActive({ row: answerRowIndex, place });
+      focusBox();
+    },
+    [answerRowIndex, focusBox, visiblePlaces]
+  );
+
   const onKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -184,6 +270,15 @@ export function ArithmeticBoxEmbed({
             carry: digit,
           }));
           setCarryMode(false);
+          return;
+        }
+        if (activeCell.row === answerRowIndex) {
+          applyState((draft) => {
+            const last = draft.rows.length - 1;
+            if (!draft.answerByPlace) draft.answerByPlace = {};
+            draft.answerByPlace[String(activeCell.place)] = digit;
+            draft.rows[last] = "";
+          });
           return;
         }
         applyState((draft) => {
@@ -202,6 +297,20 @@ export function ArithmeticBoxEmbed({
             return next;
           });
           setCarryMode(false);
+          return;
+        }
+        if (activeCell.row === answerRowIndex) {
+          applyState((draft) => {
+            const last = draft.rows.length - 1;
+            const p = String(activeCell.place);
+            if (draft.answerByPlace?.[p]) {
+              const next = { ...draft.answerByPlace };
+              delete next[p];
+              draft.answerByPlace =
+                Object.keys(next).length > 0 ? next : undefined;
+            }
+            draft.rows[last] = "";
+          });
           return;
         }
         applyState((draft) => {
@@ -286,8 +395,8 @@ export function ArithmeticBoxEmbed({
       tabIndex={0}
       onKeyDown={onKeyDown}
     >
-      <div className="mb-1 flex items-center justify-between gap-2 font-sans text-[10px] text-neutral-500">
-        <span>
+      <div className="mb-1 flex shrink-0 items-center justify-between gap-2 font-sans text-[10px] text-neutral-500">
+        <span className="min-w-0 flex-1 leading-snug">
           {carryMode
             ? "Type a carry digit"
             : "Drag blank space; click digits to edit"}
@@ -295,7 +404,7 @@ export function ArithmeticBoxEmbed({
         <button
           type="button"
           className={cn(
-            "cursor-pointer rounded border px-1.5 py-0.5 text-[10px]",
+            "shrink-0 cursor-pointer rounded border px-1.5 py-0.5 text-[10px]",
             carryMode
               ? "border-red-300 bg-red-50 text-red-700"
               : "border-neutral-200 bg-neutral-50 text-neutral-600"
@@ -311,20 +420,22 @@ export function ArithmeticBoxEmbed({
         </button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col justify-end">
+      <div className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden">
         {rows.map((row, rowIndex) => {
           const isBarRow = rowIndex === lastAddendRowIndex;
           return (
             <div
               key={rowIndex}
               className={cn(
-                "grid justify-end",
-                isBarRow && "border-b-2 border-neutral-950"
+                "flex w-full justify-end",
+                rowIndex === answerRowIndex && "nooma-arithmetic-answer-row",
+                isBarRow && "mb-[4px]"
               )}
-              style={{
-                gridTemplateColumns,
-                height: ARITHMETIC_BOX_ROW_HEIGHT,
-              }}
+              onPointerDown={
+                rowIndex === answerRowIndex
+                  ? onAnswerRowPointerDown
+                  : undefined
+              }
               role="row"
               aria-label={
                 rowIndex === answerRowIndex
@@ -332,13 +443,29 @@ export function ArithmeticBoxEmbed({
                   : `Addend row ${rowIndex + 1}`
               }
             >
-              <div className="flex items-center justify-center text-xl leading-none">
-                {isBarRow ? "+" : ""}
-              </div>
-              {Array.from({ length: visiblePlaces }, (_, index) => {
+              <div
+                className={cn(
+                  "grid w-max justify-end",
+                  isBarRow &&
+                    "box-border border-b-2 border-neutral-950 pb-[4px]"
+                )}
+                style={{
+                  gridTemplateColumns,
+                  height: ARITHMETIC_BOX_ROW_HEIGHT,
+                }}
+              >
+                <div className="flex items-center justify-center text-xl leading-none">
+                  {isBarRow ? "+" : ""}
+                </div>
+                {Array.from({ length: visiblePlaces }, (_, index) => {
                 const place = visiblePlaces - index - 1;
                 const digitIndex = row.length - place - 1;
-                const digit = digitIndex >= 0 ? row[digitIndex] : "";
+                const digit =
+                  rowIndex === answerRowIndex
+                    ? (normalizedState.answerByPlace?.[String(place)] ?? "")
+                    : digitIndex >= 0
+                      ? row[digitIndex]
+                      : "";
                 const annotation =
                   normalizedState.annotations[annotationKey(rowIndex, place)];
                 const isActive =
@@ -349,11 +476,12 @@ export function ArithmeticBoxEmbed({
                     key={`${rowIndex}:${place}`}
                     type="button"
                     className={cn(
-                      "relative flex cursor-text items-center justify-center bg-transparent text-2xl leading-none outline-none select-none",
+                      "relative flex cursor-text items-center justify-center bg-transparent text-2xl leading-none outline-none select-none transition-colors",
+                      !(carryMode && isActive) && "hover:bg-neutral-200/90",
                       isActive && "rounded-sm ring-2 ring-sky-500 ring-inset",
                       carryMode &&
                         isActive &&
-                        "bg-red-50 ring-red-400"
+                        "bg-red-50 ring-red-400 hover:bg-red-200/90"
                     )}
                     style={{ width: DIGIT_CELL_WIDTH }}
                     aria-label={`Row ${rowIndex + 1}, place ${place + 1}`}
@@ -372,10 +500,16 @@ export function ArithmeticBoxEmbed({
                         className="pointer-events-none absolute top-1/2 left-1/2 h-0.5 w-6 -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-red-500"
                       />
                     ) : null}
-                    <span className="relative z-10">{digit}</span>
+                    <span className="relative z-10 inline-flex items-center justify-center gap-0.5">
+                      {digit ? <span>{digit}</span> : null}
+                      {isActive && !digit ? (
+                        <span aria-hidden className="nooma-arithmetic-caret" />
+                      ) : null}
+                    </span>
                   </button>
                 );
               })}
+              </div>
             </div>
           );
         })}

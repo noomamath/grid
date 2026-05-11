@@ -4,7 +4,13 @@ export const NOOMA_EMBED_LINK_PREFIX = "nooma://";
 export type NoomaBlockType = "arithmetic" | "algebra";
 
 export const ARITHMETIC_BOX_ROW_HEIGHT = 40;
-export const ARITHMETIC_BOX_VERTICAL_PADDING = 16;
+
+/**
+ * Vertical space outside the digit rows: card `p-2`, hint + Carry (hint wraps on
+ * narrow embeds), small slack. Used so minimum embed height never stacks rows
+ * under the header.
+ */
+export const ARITHMETIC_EMBED_VERTICAL_CHROME = 72;
 
 export type ArithmeticAnnotation = {
   slash?: boolean;
@@ -17,6 +23,11 @@ export type ArithmeticBoxState = {
   rows: string[];
   /** Keys are `${rowIndex}:${placeColumnFromRight}`. */
   annotations: Record<string, ArithmeticAnnotation>;
+  /**
+   * Answer row only: digit per place column (place 0 = ones / rightmost column).
+   * When set, answer digits are edited in-place without compact right-aligned push behavior.
+   */
+  answerByPlace?: Record<string, string>;
 };
 
 export const DEFAULT_ARITHMETIC_BOX_STATE: ArithmeticBoxState = {
@@ -26,7 +37,7 @@ export const DEFAULT_ARITHMETIC_BOX_STATE: ArithmeticBoxState = {
 };
 
 export function arithmeticBoxHeightForRows(rowCount: number): number {
-  return rowCount * ARITHMETIC_BOX_ROW_HEIGHT + ARITHMETIC_BOX_VERTICAL_PADDING;
+  return rowCount * ARITHMETIC_BOX_ROW_HEIGHT + ARITHMETIC_EMBED_VERTICAL_CHROME;
 }
 
 /** Identifies our embeddable frames and any Nooma-owned block state. */

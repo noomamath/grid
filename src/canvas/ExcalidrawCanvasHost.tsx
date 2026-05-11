@@ -65,6 +65,7 @@ const SAVE_DEBOUNCE_MS = 350;
 
 const BLANK_BOX_W = 320;
 const BLANK_BOX_H = 200;
+const DEFAULT_ARITHMETIC_BOX_W = 200;
 const DEFAULT_ARITHMETIC_BOX_H = arithmeticBoxHeightForRows(
   DEFAULT_ARITHMETIC_BOX_STATE.rows.length
 );
@@ -144,6 +145,24 @@ function sanitizeElementsPaintColors(elements: unknown[]): unknown[] {
       return { ...el, strokeColor: stroke, backgroundColor: bg };
     }
 
+    const customDataRaw = el.customData;
+    const noomaBlockTypeForDefaults =
+      customDataRaw &&
+      typeof customDataRaw === "object" &&
+      !Array.isArray(customDataRaw) &&
+      typeof (customDataRaw as { noomaBlockType?: unknown }).noomaBlockType ===
+        "string"
+        ? (customDataRaw as { noomaBlockType: string }).noomaBlockType
+        : "arithmetic";
+    const defaultEmbeddableWidth =
+      noomaBlockTypeForDefaults === "algebra"
+        ? BLANK_BOX_W
+        : DEFAULT_ARITHMETIC_BOX_W;
+    const defaultEmbeddableHeight =
+      noomaBlockTypeForDefaults === "algebra"
+        ? BLANK_BOX_H
+        : DEFAULT_ARITHMETIC_BOX_H;
+
     return {
       ...EXCALIDRAW_EMBEDDABLE_PAINT,
       ...EXCALIDRAW_EMBEDDABLE_STRUCTURE_DEFAULTS,
@@ -151,8 +170,10 @@ function sanitizeElementsPaintColors(elements: unknown[]): unknown[] {
       id: typeof el.id === "string" ? el.id : crypto.randomUUID(),
       x: typeof el.x === "number" ? el.x : 0,
       y: typeof el.y === "number" ? el.y : 0,
-      width: typeof el.width === "number" ? el.width : BLANK_BOX_W,
-      height: typeof el.height === "number" ? el.height : BLANK_BOX_H,
+      width:
+        typeof el.width === "number" ? el.width : defaultEmbeddableWidth,
+      height:
+        typeof el.height === "number" ? el.height : defaultEmbeddableHeight,
       angle: typeof el.angle === "number" ? el.angle : 0,
       seed: typeof el.seed === "number" ? el.seed : randomInt(),
       version: typeof el.version === "number" ? el.version : 1,
@@ -377,7 +398,7 @@ function migrateLegacyGridToBlankArithmeticEmbed() {
         type: "embeddable",
         x: 120,
         y: 120,
-        width: BLANK_BOX_W,
+        width: DEFAULT_ARITHMETIC_BOX_W,
         height: DEFAULT_ARITHMETIC_BOX_H,
         link: noomaEmbedLinkForBlock("arithmetic"),
         customData: { noomaBlockType: "arithmetic" },
@@ -608,14 +629,17 @@ export function ExcalidrawCanvasHost() {
       const api = apiRef.current;
       if (!api) return;
       const { sceneX, sceneY } = viewportCenterSceneCoords(api);
+      const placeW =
+        blockType === "arithmetic" ? DEFAULT_ARITHMETIC_BOX_W : BLANK_BOX_W;
+      const placeH =
+        blockType === "arithmetic" ? DEFAULT_ARITHMETIC_BOX_H : BLANK_BOX_H;
       insertEmbeddableNoomaBlock(api, {
         ...EXCALIDRAW_EMBEDDABLE_PAINT,
         type: "embeddable",
-        x: sceneX - BLANK_BOX_W / 2,
-        y: sceneY - BLANK_BOX_H / 2,
-        width: BLANK_BOX_W,
-        height:
-          blockType === "arithmetic" ? DEFAULT_ARITHMETIC_BOX_H : BLANK_BOX_H,
+        x: sceneX - placeW / 2,
+        y: sceneY - placeH / 2,
+        width: placeW,
+        height: placeH,
         link: noomaEmbedLinkForBlock(blockType),
         customData: { noomaBlockType: blockType },
       } as unknown as ExcalidrawElementSkeletonInput);

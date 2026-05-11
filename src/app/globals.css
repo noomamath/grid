@@ -172,6 +172,50 @@
   pointer-events: none;
 }
 
+/*
+ * Answer row is right-aligned like addends; empty space on the left must still hit
+ * this row (pointer-events:auto) or clicks fall through to the canvas below.
+ */
+.excalidraw .nooma-math-card.nooma-arithmetic-card .nooma-arithmetic-answer-row {
+  pointer-events: auto;
+}
+
+@keyframes nooma-arithmetic-caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/*
+ * Embeddable DOM may not be a descendant of `.excalidraw`; scope only to the card
+ * so the caret always picks up size/color (see ArithmeticBoxEmbed).
+ */
+.nooma-math-card .nooma-arithmetic-caret {
+  position: relative;
+  z-index: 2;
+  display: inline-block;
+  flex-shrink: 0;
+  width: 2px;
+  min-height: 10px;
+  height: 0.8em;
+  border-radius: 1px;
+  /* Same as `.excalidraw .nooma-math-card` border */
+  background-color: #554ecd;
+  animation: nooma-arithmetic-caret-blink 1.05s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nooma-math-card .nooma-arithmetic-caret {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 /* Hide Excalidraw library UI (sidebar, header controls); Nooma uses custom embeds. */
 .excalidraw .layer-ui__library,
 .excalidraw .default-sidebar-trigger,
