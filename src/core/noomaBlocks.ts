@@ -24,6 +24,12 @@ export type ArithmeticBoxState = {
   /** Keys are `${rowIndex}:${placeColumnFromRight}`. */
   annotations: Record<string, ArithmeticAnnotation>;
   /**
+   * Addend rows (every row except the last): digit per place column (place 0 = ones).
+   * When present for a row, that row’s `rows[i]` digit string is left empty; digits are
+   * edited in-place like the answer row instead of compact right-pushed strings.
+   */
+  addendDigitsByPlace?: Record<string, Record<string, string>>;
+  /**
    * Answer row only: digit per place column (place 0 = ones / rightmost column).
    * When set, answer digits are edited in-place without compact right-aligned push behavior.
    */

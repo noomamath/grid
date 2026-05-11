@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type FocusEvent,
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
@@ -22,6 +23,8 @@ import { cn } from "@/lib/utils";
 const DIGIT_CELL_WIDTH = 28;
 const OPERATOR_COL_WIDTH = 24;
 const MIN_VISIBLE_PLACES = 3;
+/** One addend row, the `+` row, and the answer row. */
+const MIN_ARITHMETIC_ROWS = DEFAULT_ARITHMETIC_BOX_STATE.rows.length;
 
 type ArithmeticBoxEmbedProps = {
   state?: ArithmeticBoxState;
@@ -43,10 +46,94 @@ function cloneState(state: ArithmeticBoxState): ArithmeticBoxState {
     version: 1,
     rows: [...state.rows],
     annotations: { ...state.annotations },
+    ...(state.addendDigitsByPlace
+      ? {
+          addendDigitsByPlace: Object.fromEntries(
+            Object.entries(state.addendDigitsByPlace).map(([rowKey, m]) => [
+              rowKey,
+              { ...m },
+            ])
+          ),
+        }
+      : {}),
     ...(state.answerByPlace
       ? { answerByPlace: { ...state.answerByPlace } }
       : {}),
   };
+}
+
+function addendRowHasDigits(draft: ArithmeticBoxState, rowIndex: number): boolean {
+  const rk = String(rowIndex);
+  const inner = draft.addendDigitsByPlace?.[rk];
+  if (inner && Object.keys(inner).length > 0) return true;
+  return (draft.rows[rowIndex] ?? "").replace(/\D/g, "").length > 0;
+}
+
+function rowHasAnnotationsOnRow(
+  draft: ArithmeticBoxState,
+  rowIndex: number
+): boolean {
+  const prefix = `${rowIndex}:`;
+  return Object.keys(draft.annotations).some((k) => k.startsWith(prefix));
+}
+
+/**
+ * Whether `rowIndex` can be removed. Includes the `+` row when it is an extra empty
+ * line from Enter (it becomes `lastAddendRowIndex`); deleting it restores the prior
+ * `+` row. Never removes the answer row or the last row when that would drop below
+ * {@link MIN_ARITHMETIC_ROWS}.
+ */
+function canDeleteEmptyAddendRow(
+  draft: ArithmeticBoxState,
+  rowIndex: number,
+  answerRowIndex: number
+): boolean {
+  if (draft.rows.length <= MIN_ARITHMETIC_ROWS) return false;
+  if (rowIndex === answerRowIndex) return false;
+  if (addendRowHasDigits(draft, rowIndex)) return false;
+  if (rowHasAnnotationsOnRow(draft, rowIndex)) return false;
+  return true;
+}
+
+function reindexAfterDeletingRow(
+  draft: ArithmeticBoxState,
+  deletedRow: number
+): void {
+  const nextAnn: Record<string, ArithmeticAnnotation> = {};
+  for (const [key, ann] of Object.entries(draft.annotations)) {
+    const [rs, place] = key.split(":");
+    const r = Number(rs);
+    if (!Number.isInteger(r)) continue;
+    if (r === deletedRow) continue;
+    const newR = r > deletedRow ? r - 1 : r;
+    nextAnn[`${newR}:${place}`] = ann;
+  }
+  draft.annotations = nextAnn;
+
+  if (!draft.addendDigitsByPlace) return;
+  const nextMap: Record<string, Record<string, string>> = {};
+  for (const [rk, inner] of Object.entries(draft.addendDigitsByPlace)) {
+    const r = Number(rk);
+    if (!Number.isInteger(r)) continue;
+    if (r === deletedRow) continue;
+    const newR = r > deletedRow ? r - 1 : r;
+    nextMap[String(newR)] = { ...inner };
+  }
+  draft.addendDigitsByPlace =
+    Object.keys(nextMap).length > 0 ? nextMap : undefined;
+}
+
+/** Compact digit string (MSB…LSB) → place map (place 0 = rightmost / ones). */
+function compactDigitsToPlaceMap(s: string): Record<string, string> {
+  const cleaned = s.replace(/\D/g, "");
+  const map: Record<string, string> = {};
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (!/^\d$/.test(ch)) continue;
+    const place = cleaned.length - 1 - i;
+    map[String(place)] = ch;
+  }
+  return map;
 }
 
 function normalizeAnnotation(value: unknown): ArithmeticAnnotation | null {
@@ -117,6 +204,55 @@ export function normalizeArithmeticBoxState(
     rows[answerIdx] = "";
   }
 
+  let addendDigitsByPlace: Record<string, Record<string, string>> | undefined;
+
+  if (
+    state?.version === 1 &&
+    state.addendDigitsByPlace &&
+    typeof state.addendDigitsByPlace === "object" &&
+    !Array.isArray(state.addendDigitsByPlace)
+  ) {
+    addendDigitsByPlace = {};
+    for (const [rowKey, inner] of Object.entries(state.addendDigitsByPlace)) {
+      if (!/^\d+$/.test(rowKey)) continue;
+      const rowIdx = Number(rowKey);
+      if (!Number.isInteger(rowIdx) || rowIdx < 0 || rowIdx >= answerIdx) {
+        continue;
+      }
+      if (!inner || typeof inner !== "object" || Array.isArray(inner)) continue;
+      const cleaned: Record<string, string> = {};
+      for (const [pk, ch] of Object.entries(inner)) {
+        if (!/^\d+$/.test(pk)) continue;
+        if (typeof ch === "string" && /^\d$/.test(ch)) {
+          cleaned[pk] = ch;
+        }
+      }
+      if (Object.keys(cleaned).length > 0) {
+        addendDigitsByPlace[rowKey] = cleaned;
+      }
+    }
+    if (Object.keys(addendDigitsByPlace).length === 0) {
+      addendDigitsByPlace = undefined;
+    }
+  }
+
+  for (let i = 0; i < answerIdx; i++) {
+    const fromString = compactDigitsToPlaceMap(rows[i]);
+    const rowKey = String(i);
+    const fromMap = addendDigitsByPlace?.[rowKey] ?? {};
+    const merged: Record<string, string> = { ...fromString, ...fromMap };
+    rows[i] = "";
+    if (Object.keys(merged).length > 0) {
+      if (!addendDigitsByPlace) addendDigitsByPlace = {};
+      addendDigitsByPlace[rowKey] = merged;
+    } else if (addendDigitsByPlace?.[rowKey]) {
+      const nextOuter = { ...addendDigitsByPlace };
+      delete nextOuter[rowKey];
+      addendDigitsByPlace =
+        Object.keys(nextOuter).length > 0 ? nextOuter : undefined;
+    }
+  }
+
   const annotations: Record<string, ArithmeticAnnotation> = {};
   const rawAnnotations =
     state?.version === 1 &&
@@ -136,6 +272,9 @@ export function normalizeArithmeticBoxState(
     version: 1,
     rows,
     annotations,
+    ...(addendDigitsByPlace && Object.keys(addendDigitsByPlace).length > 0
+      ? { addendDigitsByPlace }
+      : {}),
     ...(answerByPlace ? { answerByPlace } : {}),
   };
 }
@@ -148,6 +287,8 @@ export function ArithmeticBoxEmbed({
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState<ActiveCell>({ row: 0, place: 0 });
   const [carryMode, setCarryMode] = useState(false);
+  /** False when focus is outside the card so we do not show cell rings / caret while editing the canvas. */
+  const [embedFocused, setEmbedFocused] = useState(false);
 
   const normalizedState = useMemo(() => normalizeArithmeticBoxState(state), [state]);
   const rows = normalizedState.rows;
@@ -172,8 +313,22 @@ export function ArithmeticBoxEmbed({
       const place = Number(key);
       if (Number.isInteger(place)) maxPlace = Math.max(maxPlace, place + 1);
     }
+    for (const places of Object.values(
+      normalizedState.addendDigitsByPlace ?? {}
+    )) {
+      for (const pk of Object.keys(places)) {
+        const place = Number(pk);
+        if (Number.isInteger(place)) maxPlace = Math.max(maxPlace, place + 1);
+      }
+    }
     return maxPlace;
-  }, [activeCell.place, normalizedState.annotations, normalizedState.answerByPlace, rows]);
+  }, [
+    activeCell.place,
+    normalizedState.addendDigitsByPlace,
+    normalizedState.annotations,
+    normalizedState.answerByPlace,
+    rows,
+  ]);
 
   useEffect(() => {
     const minimumHeight = arithmeticBoxHeightForRows(rows.length);
@@ -212,6 +367,17 @@ export function ArithmeticBoxEmbed({
 
   const focusBox = useCallback(() => {
     requestAnimationFrame(() => boxRef.current?.focus());
+  }, []);
+
+  const onEmbedFocusCapture = useCallback(() => {
+    setEmbedFocused(true);
+  }, []);
+
+  const onEmbedBlurCapture = useCallback((event: FocusEvent<HTMLDivElement>) => {
+    const next = event.relatedTarget as Node | null;
+    if (!next || !event.currentTarget.contains(next)) {
+      setEmbedFocused(false);
+    }
   }, []);
 
   const onCellPointerDown = useCallback(
@@ -282,14 +448,20 @@ export function ArithmeticBoxEmbed({
           return;
         }
         applyState((draft) => {
-          draft.rows[activeCell.row] = `${draft.rows[activeCell.row] ?? ""}${digit}`;
+          const rk = String(activeCell.row);
+          if (!draft.addendDigitsByPlace) draft.addendDigitsByPlace = {};
+          draft.addendDigitsByPlace[rk] = {
+            ...(draft.addendDigitsByPlace[rk] ?? {}),
+            [String(activeCell.place)]: digit,
+          };
+          draft.rows[activeCell.row] = "";
         });
-        setActive((current) => ({ ...current, place: 0 }));
         return;
       }
 
-      if (event.key === "Backspace") {
+      if (event.key === "Backspace" || event.key === "Delete") {
         event.preventDefault();
+        const isDelete = event.key === "Delete";
         if (carryMode) {
           updateAnnotation(activeCell.row, activeCell.place, (current) => {
             const next = { ...current };
@@ -313,11 +485,49 @@ export function ArithmeticBoxEmbed({
           });
           return;
         }
+        if (
+          canDeleteEmptyAddendRow(
+            normalizedState,
+            activeCell.row,
+            answerRowIndex
+          )
+        ) {
+          const deletedRow = activeCell.row;
+          applyState((draft) => {
+            draft.rows.splice(deletedRow, 1);
+            reindexAfterDeletingRow(draft, deletedRow);
+          });
+          const newLen = normalizedState.rows.length - 1;
+          const newLastAddend = newLen - 2;
+          setActive({
+            row: Math.max(0, Math.min(deletedRow, newLastAddend)),
+            place: activeCell.place,
+          });
+          return;
+        }
         applyState((draft) => {
-          const current = draft.rows[activeCell.row] ?? "";
-          draft.rows[activeCell.row] = current.slice(0, -1);
+          const rk = String(activeCell.row);
+          const p = String(activeCell.place);
+          const inner = draft.addendDigitsByPlace?.[rk];
+          if (inner?.[p]) {
+            const nextInner = { ...inner };
+            delete nextInner[p];
+            if (Object.keys(nextInner).length === 0) {
+              const outer = { ...(draft.addendDigitsByPlace ?? {}) };
+              delete outer[rk];
+              draft.addendDigitsByPlace =
+                Object.keys(outer).length > 0 ? outer : undefined;
+            } else {
+              draft.addendDigitsByPlace = {
+                ...(draft.addendDigitsByPlace ?? {}),
+                [rk]: nextInner,
+              };
+            }
+          } else if (!isDelete) {
+            const current = draft.rows[activeCell.row] ?? "";
+            draft.rows[activeCell.row] = current.slice(0, -1);
+          }
         });
-        setActive((current) => ({ ...current, place: 0 }));
         return;
       }
 
@@ -380,6 +590,7 @@ export function ArithmeticBoxEmbed({
       applyState,
       carryMode,
       lastAddendRowIndex,
+      normalizedState,
       updateAnnotation,
     ]
   );
@@ -393,6 +604,8 @@ export function ArithmeticBoxEmbed({
       role="application"
       aria-label="Arithmetic card"
       tabIndex={0}
+      onFocusCapture={onEmbedFocusCapture}
+      onBlurCapture={onEmbedBlurCapture}
       onKeyDown={onKeyDown}
     >
       <div className="mb-1 flex shrink-0 items-center justify-between gap-2 font-sans text-[10px] text-neutral-500">
@@ -460,16 +673,21 @@ export function ArithmeticBoxEmbed({
                 {Array.from({ length: visiblePlaces }, (_, index) => {
                 const place = visiblePlaces - index - 1;
                 const digitIndex = row.length - place - 1;
+                const addendByPlace =
+                  normalizedState.addendDigitsByPlace?.[String(rowIndex)];
                 const digit =
                   rowIndex === answerRowIndex
                     ? (normalizedState.answerByPlace?.[String(place)] ?? "")
-                    : digitIndex >= 0
-                      ? row[digitIndex]
-                      : "";
+                    : addendByPlace && Object.keys(addendByPlace).length > 0
+                      ? (addendByPlace[String(place)] ?? "")
+                      : digitIndex >= 0
+                        ? row[digitIndex]
+                        : "";
                 const annotation =
                   normalizedState.annotations[annotationKey(rowIndex, place)];
                 const isActive =
                   activeCell.row === rowIndex && activeCell.place === place;
+                const showCellFocus = embedFocused && isActive;
 
                 return (
                   <button
@@ -477,10 +695,10 @@ export function ArithmeticBoxEmbed({
                     type="button"
                     className={cn(
                       "relative flex cursor-text items-center justify-center bg-transparent text-2xl leading-none outline-none select-none transition-colors",
-                      !(carryMode && isActive) && "hover:bg-neutral-200/90",
-                      isActive && "rounded-sm ring-2 ring-sky-500 ring-inset",
+                      !(carryMode && showCellFocus) && "hover:bg-neutral-200/90",
+                      showCellFocus && "rounded-sm ring-2 ring-sky-500 ring-inset",
                       carryMode &&
-                        isActive &&
+                        showCellFocus &&
                         "bg-red-50 ring-red-400 hover:bg-red-200/90"
                     )}
                     style={{ width: DIGIT_CELL_WIDTH }}
@@ -502,7 +720,7 @@ export function ArithmeticBoxEmbed({
                     ) : null}
                     <span className="relative z-10 inline-flex items-center justify-center gap-0.5">
                       {digit ? <span>{digit}</span> : null}
-                      {isActive && !digit ? (
+                      {showCellFocus && !digit ? (
                         <span aria-hidden className="nooma-arithmetic-caret" />
                       ) : null}
                     </span>
