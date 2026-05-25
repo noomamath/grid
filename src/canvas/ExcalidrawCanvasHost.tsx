@@ -25,6 +25,8 @@ import { createPortal } from "react-dom";
 import { Plus } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
+import { NoomaEmbeddableShell } from "@/canvas/NoomaEmbeddableShell";
+import { NoomaEmbedLinkShieldOverlays } from "@/canvas/NoomaEmbedLinkShieldOverlay";
 import { ArithmeticBoxEmbed } from "@/editors/cell-grid/ArithmeticBoxEmbed";
 import { NoomaEmbedPropertiesPanel } from "@/canvas/NoomaEmbedPropertiesPanel";
 import {
@@ -663,25 +665,33 @@ export function ExcalidrawCanvasHost() {
             ? (data.arithmetic as ArithmeticBoxState)
             : undefined;
         return (
+          <NoomaEmbeddableShell elementId={_element.id}>
+            <ArithmeticBoxEmbed
+              state={arithmetic}
+              elementHeight={_element.height}
+              onChange={(nextState) =>
+                updateArithmeticEmbeddable(_element.id, nextState)
+              }
+            />
+          </NoomaEmbeddableShell>
+        );
+      }
+      if (inferredType === "algebra") {
+        return (
+          <NoomaEmbeddableShell elementId={_element.id}>
+            <BlankAlgebraEmbed />
+          </NoomaEmbeddableShell>
+        );
+      }
+      return (
+        <NoomaEmbeddableShell elementId={_element.id}>
           <ArithmeticBoxEmbed
-            state={arithmetic}
             elementHeight={_element.height}
             onChange={(nextState) =>
               updateArithmeticEmbeddable(_element.id, nextState)
             }
           />
-        );
-      }
-      if (inferredType === "algebra") {
-        return <BlankAlgebraEmbed />;
-      }
-      return (
-        <ArithmeticBoxEmbed
-          elementHeight={_element.height}
-          onChange={(nextState) =>
-            updateArithmeticEmbeddable(_element.id, nextState)
-          }
-        />
+        </NoomaEmbeddableShell>
       );
     },
     [updateArithmeticEmbeddable]
@@ -869,6 +879,10 @@ export function ExcalidrawCanvasHost() {
           </label>
         </Footer>
       </Excalidraw>
+      <NoomaEmbedLinkShieldOverlays
+        hostRef={hostRef}
+        hiddenElementId={selectedNoomaEmbed?.elementId ?? null}
+      />
       {selectedNoomaEmbed ? (
         <div
           ref={embedPropertiesStackRef}

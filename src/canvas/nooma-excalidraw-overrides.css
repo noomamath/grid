@@ -95,3 +95,27 @@
   gap: 0.375rem;
   width: 100%;
 }
+
+/*
+ * Excalidraw draws the embed "open link" control when the embed is not selected.
+ * NoomaEmbedLinkShieldOverlays cover unselected embeds only (hidden for the selection).
+ */
+.nooma-excalidraw-host .excalidraw__embeddable-container {
+  overflow: visible !important;
+}
+
+.nooma-excalidraw-host .nooma-embed-link-shield-overlay {
+  position: absolute;
+  z-index: 200;
+  pointer-events: all !important;
+  touch-action: none;
+  background-color: #ffffff;
+  border-radius: 8px;
+  cursor: default;
+}
+
+/* Excalidraw places the link button in this layer (z-index 3). */
+.nooma-excalidraw-host .excalidraw-canvas-buttons {
+  display: none !important;
+  pointer-events: none !important;
+}
