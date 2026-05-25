@@ -603,6 +603,30 @@ export function ExcalidrawCanvasHost() {
     };
   }, [selectedNoomaEmbed]);
 
+  /** Unselected embeds stay under the canvas layer so they do not cover another card’s handles. */
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+
+    const syncEmbedContainerZIndex = () => {
+      const selectedId = selectedNoomaEmbed?.elementId ?? null;
+      for (const root of host.querySelectorAll("[data-nooma-embed-id]")) {
+        const id = root.getAttribute("data-nooma-embed-id");
+        const container = root.closest(".excalidraw__embeddable-container");
+        if (!(container instanceof HTMLElement)) continue;
+        container.style.zIndex = id === selectedId ? "2" : "1";
+      }
+    };
+
+    syncEmbedContainerZIndex();
+    const observer = new MutationObserver(() => {
+      requestAnimationFrame(syncEmbedContainerZIndex);
+    });
+    observer.observe(host, { childList: true, subtree: true, attributes: true });
+
+    return () => observer.disconnect();
+  }, [selectedNoomaEmbed]);
+
   const updateArithmeticEmbeddable = useCallback(
     (elementId: string, arithmetic: ArithmeticBoxState) => {
       const api = apiRef.current;

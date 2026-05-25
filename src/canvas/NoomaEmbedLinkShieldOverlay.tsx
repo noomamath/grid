@@ -4,15 +4,17 @@ import {
   useCallback,
   useLayoutEffect,
   useState,
+  type MouseEvent,
   type PointerEvent,
   type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
 
 /** Matches Excalidraw `ElementCanvasButtons` placement (sceneX + width, sceneY). */
-const SHIELD_OFFSET_LEFT_PX = -2;
-const SHIELD_OFFSET_TOP_PX = -17;
-const SHIELD_WIDTH_PX = 20;
-const SHIELD_HEIGHT_PX = 18;
+const SHIELD_OFFSET_LEFT_PX = -4;
+const SHIELD_OFFSET_TOP_PX = -20;
+const SHIELD_WIDTH_PX = 24;
+const SHIELD_HEIGHT_PX = 24;
 
 type ShieldRect = {
   left: number;
@@ -32,17 +34,13 @@ type NoomaEmbedLinkShieldOverlaysProps = {
   hiddenElementId: string | null;
 };
 
-function shieldRectForContainer(
-  container: Element,
-  host: HTMLElement
-): ShieldRect | null {
+function shieldRectForContainer(container: Element): ShieldRect | null {
   const containerRect = container.getBoundingClientRect();
   if (containerRect.width === 0 && containerRect.height === 0) return null;
 
-  const hostRect = host.getBoundingClientRect();
   return {
-    left: containerRect.right - hostRect.left + SHIELD_OFFSET_LEFT_PX,
-    top: containerRect.top - hostRect.top + SHIELD_OFFSET_TOP_PX,
+    left: containerRect.right + SHIELD_OFFSET_LEFT_PX,
+    top: containerRect.top + SHIELD_OFFSET_TOP_PX,
     width: SHIELD_WIDTH_PX,
     height: SHIELD_HEIGHT_PX,
   };
@@ -53,7 +51,7 @@ function LinkShield({
   onPointerEvent,
 }: {
   rect: ShieldRect;
-  onPointerEvent: (event: PointerEvent) => void;
+  onPointerEvent: (event: MouseEvent | PointerEvent) => void;
 }) {
   return (
     <div
@@ -98,7 +96,7 @@ export function NoomaEmbedLinkShieldOverlays({
       const container = embedRoot.closest(".excalidraw__embeddable-container");
       if (!container) continue;
 
-      const rect = shieldRectForContainer(container, host);
+      const rect = shieldRectForContainer(container);
       if (rect) next.push({ elementId, rect });
     }
     setPlacements(next);
@@ -142,16 +140,19 @@ export function NoomaEmbedLinkShieldOverlays({
     };
   }, [hostRef, syncRects]);
 
-  const stop = (event: PointerEvent) => {
+  const stop = (event: MouseEvent | PointerEvent) => {
     event.preventDefault();
     event.stopPropagation();
   };
 
-  return (
+  if (placements.length === 0) return null;
+
+  return createPortal(
     <>
       {placements.map(({ elementId, rect }) => (
         <LinkShield key={elementId} rect={rect} onPointerEvent={stop} />
       ))}
-    </>
+    </>,
+    document.body
   );
 }

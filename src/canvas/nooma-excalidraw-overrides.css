@@ -98,15 +98,19 @@
 
 /*
  * Excalidraw draws the embed "open link" control when the embed is not selected.
- * NoomaEmbedLinkShieldOverlays cover unselected embeds only (hidden for the selection).
+ * Link shields are host overlays (z-index 200); embed containers use z-index 1/2 from JS/CSS.
  */
 .nooma-excalidraw-host .excalidraw__embeddable-container {
   overflow: visible !important;
 }
 
-.nooma-excalidraw-host .nooma-embed-link-shield-overlay {
-  position: absolute;
-  z-index: 200;
+/*
+ * Portaled to document.body (see NoomaEmbedLinkShieldOverlay) above Excalidraw’s
+ * canvas stack; independent of embed container z-index (1/2).
+ */
+.nooma-embed-link-shield-overlay {
+  position: fixed;
+  z-index: 10040;
   pointer-events: all !important;
   touch-action: none;
   background-color: #ffffff;

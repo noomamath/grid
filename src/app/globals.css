@@ -131,9 +131,9 @@
   }
 }
 
-/* Keep custom embeddable DOM below Excalidraw interactive selection handles. */
+/* Below interactive canvas (2) so selection handles stay visible; selected embed bumped via JS. */
 .excalidraw .excalidraw__embeddable-container {
-  z-index: 2;
+  z-index: var(--zIndex-canvas);
 }
 
 /* Hide Excalidraw hyperlink editor/preview UI for custom embeddables. */
@@ -330,8 +330,8 @@
 }
 
 /*
- * FAB is portaled to body (see ExcalidrawCanvasHost) so it isn’t covered by
- * Excalidraw’s portaled layer UI (z-index ~1000+). Stay below toasts (999999).
+ * FAB and link shields are portaled to body so they sit above Excalidraw’s canvas
+ * (z-index ~1000+ layer UI). Shields 10040; FAB 10050; toasts 999999.
  */
 .nooma-toolbar-fab-anchor {
   position: fixed;
