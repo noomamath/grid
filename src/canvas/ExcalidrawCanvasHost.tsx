@@ -4,10 +4,12 @@ import {
   CaptureUpdateAction,
   convertToExcalidrawElements,
   Excalidraw,
+  Footer,
   serializeAsJSON,
 } from "@excalidraw/excalidraw";
 
 import "@excalidraw/excalidraw/index.css";
+import "@/canvas/nooma-excalidraw-overrides.css";
 
 import {
   useCallback,
@@ -22,13 +24,25 @@ import { createPortal } from "react-dom";
 
 import { Plus } from "lucide-react";
 
+import { Switch } from "@/components/ui/switch";
+import { ArithmeticBoxEmbed } from "@/editors/cell-grid/ArithmeticBoxEmbed";
+import { NoomaEmbedPropertiesPanel } from "@/canvas/NoomaEmbedPropertiesPanel";
+import {
+  getSingleSelectedNoomaEmbed,
+  isSameNoomaEmbedSelection,
+  type SelectedNoomaEmbed,
+} from "@/canvas/noomaEmbedPanel";
+import { syncNoomaEmbedPanelFieldsets } from "@/canvas/syncNoomaEmbedPanelFieldsets";
 import {
   loadGuestDocument,
   saveGuestCanvasDocument,
 } from "@/core/db";
 import {
+  DEFAULT_ARITHMETIC_BOX_STATE,
   NOOMA_EMBED_LINK_PREFIX,
+  arithmeticBoxHeightForRows,
   noomaEmbedLinkForBlock,
+  type ArithmeticBoxState,
   type NoomaBlockType,
   type NoomaEmbeddableCustomData,
 } from "@/core/noomaBlocks";
@@ -59,8 +73,18 @@ type ExcalidrawElementSkeletonInput = NonNullable<
 
 const SAVE_DEBOUNCE_MS = 350;
 
+/** Merged under saved `appState` so older documents pick up new defaults unless overridden. */
+const NOOMA_EXCALIDRAW_APP_DEFAULTS: Record<string, unknown> = {
+  viewBackgroundColor: "#f8f9fa",
+  gridModeEnabled: true,
+};
+
 const BLANK_BOX_W = 320;
 const BLANK_BOX_H = 200;
+const DEFAULT_ARITHMETIC_BOX_W = 200;
+const DEFAULT_ARITHMETIC_BOX_H = arithmeticBoxHeightForRows(
+  DEFAULT_ARITHMETIC_BOX_STATE.rows.length
+);
 
 /**
  * `convertToExcalidrawElements` does not run `newEmbeddableElement` for
@@ -137,6 +161,24 @@ function sanitizeElementsPaintColors(elements: unknown[]): unknown[] {
       return { ...el, strokeColor: stroke, backgroundColor: bg };
     }
 
+    const customDataRaw = el.customData;
+    const noomaBlockTypeForDefaults =
+      customDataRaw &&
+      typeof customDataRaw === "object" &&
+      !Array.isArray(customDataRaw) &&
+      typeof (customDataRaw as { noomaBlockType?: unknown }).noomaBlockType ===
+        "string"
+        ? (customDataRaw as { noomaBlockType: string }).noomaBlockType
+        : "arithmetic";
+    const defaultEmbeddableWidth =
+      noomaBlockTypeForDefaults === "algebra"
+        ? BLANK_BOX_W
+        : DEFAULT_ARITHMETIC_BOX_W;
+    const defaultEmbeddableHeight =
+      noomaBlockTypeForDefaults === "algebra"
+        ? BLANK_BOX_H
+        : DEFAULT_ARITHMETIC_BOX_H;
+
     return {
       ...EXCALIDRAW_EMBEDDABLE_PAINT,
       ...EXCALIDRAW_EMBEDDABLE_STRUCTURE_DEFAULTS,
@@ -144,8 +186,10 @@ function sanitizeElementsPaintColors(elements: unknown[]): unknown[] {
       id: typeof el.id === "string" ? el.id : crypto.randomUUID(),
       x: typeof el.x === "number" ? el.x : 0,
       y: typeof el.y === "number" ? el.y : 0,
-      width: typeof el.width === "number" ? el.width : BLANK_BOX_W,
-      height: typeof el.height === "number" ? el.height : BLANK_BOX_H,
+      width:
+        typeof el.width === "number" ? el.width : defaultEmbeddableWidth,
+      height:
+        typeof el.height === "number" ? el.height : defaultEmbeddableHeight,
       angle: typeof el.angle === "number" ? el.angle : 0,
       seed: typeof el.seed === "number" ? el.seed : randomInt(),
       version: typeof el.version === "number" ? el.version : 1,
@@ -254,6 +298,59 @@ function findMalformedEmbeddables(elements: unknown[]): Array<{
   return malformed;
 }
 
+function arithmeticRowCountFromCustomData(customData: unknown): number | null {
+  if (!customData || typeof customData !== "object" || Array.isArray(customData)) {
+    return null;
+  }
+  const data = customData as Record<string, unknown>;
+  if (
+    data.noomaBlockType !== "arithmetic" &&
+    data.noomaBlockType !== "arithmetic-grid"
+  ) {
+    return null;
+  }
+  const arithmetic = data.arithmetic;
+  if (!arithmetic || typeof arithmetic !== "object" || Array.isArray(arithmetic)) {
+    return DEFAULT_ARITHMETIC_BOX_STATE.rows.length;
+  }
+  const rows = (arithmetic as { rows?: unknown }).rows;
+  return Array.isArray(rows)
+    ? Math.max(rows.length, DEFAULT_ARITHMETIC_BOX_STATE.rows.length)
+    : DEFAULT_ARITHMETIC_BOX_STATE.rows.length;
+}
+
+function clampArithmeticEmbeddableHeights<
+  T extends {
+    height: number;
+    version?: number;
+    customData?: unknown;
+    versionNonce?: number;
+    updated?: number;
+  },
+>(
+  elements: readonly T[]
+): { elements: T[]; changed: boolean } {
+  let changed = false;
+  const now = Date.now();
+  const next = elements.map((element) => {
+    const rowCount = arithmeticRowCountFromCustomData(element.customData);
+    if (rowCount === null) return element;
+
+    const minimumHeight = arithmeticBoxHeightForRows(rowCount);
+    if (element.height >= minimumHeight) return element;
+
+    changed = true;
+    return {
+      ...element,
+      height: minimumHeight,
+      version: typeof element.version === "number" ? element.version + 1 : 1,
+      versionNonce: randomInt(),
+      updated: now,
+    };
+  });
+  return { elements: next, changed };
+}
+
 function viewportCenterSceneCoords(api: ExcalidrawAPI): {
   sceneX: number;
   sceneY: number;
@@ -317,22 +414,13 @@ function migrateLegacyGridToBlankArithmeticEmbed() {
         type: "embeddable",
         x: 120,
         y: 120,
-        width: BLANK_BOX_W,
-        height: BLANK_BOX_H,
+        width: DEFAULT_ARITHMETIC_BOX_W,
+        height: DEFAULT_ARITHMETIC_BOX_H,
         link: noomaEmbedLinkForBlock("arithmetic"),
         customData: { noomaBlockType: "arithmetic" },
       } as unknown as ExcalidrawElementSkeletonInput,
     ],
     { regenerateIds: true }
-  );
-}
-
-function BlankArithmeticEmbed() {
-  return (
-    <div
-      className="nooma-math-card box-border h-full w-full"
-      aria-label="Arithmetic card"
-    />
   );
 }
 
@@ -345,6 +433,7 @@ function BlankAlgebraEmbed() {
 }
 
 export function ExcalidrawCanvasHost() {
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const apiRef = useRef<ExcalidrawAPI | null>(null);
   const fabAnchorRef = useRef<HTMLDivElement | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -352,6 +441,12 @@ export function ExcalidrawCanvasHost() {
   );
 
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
+  const [selectedNoomaEmbed, setSelectedNoomaEmbed] =
+    useState<SelectedNoomaEmbed | null>(null);
+  const noomaEmbedSelected = selectedNoomaEmbed !== null;
+  const [gridModeOn, setGridModeOn] = useState(
+    NOOMA_EXCALIDRAW_APP_DEFAULTS.gridModeEnabled === true
+  );
   const [sceneReady, setSceneReady] = useState(false);
   const [initialPayload, setInitialPayload] = useState<SceneBootstrap | null>(
     null
@@ -408,7 +503,7 @@ export function ExcalidrawCanvasHost() {
         const elements = migrateLegacyGridToBlankArithmeticEmbed();
         setInitialPayload({
           elements: [...elements],
-          appState: { viewBackgroundColor: "#f8f9fa" },
+          appState: { ...NOOMA_EXCALIDRAW_APP_DEFAULTS },
           files: {},
         });
         setSceneReady(true);
@@ -462,23 +557,135 @@ export function ExcalidrawCanvasHost() {
     []
   );
 
-  const renderEmbeddable: RenderEmbeddableImpl = useCallback((_element) => {
-    const data = _element.customData as
-      | NoomaEmbeddableCustomData
-      | Record<string, unknown>
-      | undefined;
-    const inferredType =
-      typeof data?.noomaBlockType === "string"
-        ? data.noomaBlockType
-        : "arithmetic";
-    if (inferredType === "arithmetic" || inferredType === "arithmetic-grid") {
-      return <BlankArithmeticEmbed />;
+  const embedPropertiesStackRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    const stack = embedPropertiesStackRef.current;
+    if (!host) return;
+
+    const syncPanelChrome = () => {
+      syncNoomaEmbedPanelFieldsets(host, selectedNoomaEmbed !== null);
+
+      if (!selectedNoomaEmbed || !stack) {
+        host.style.removeProperty("--nooma-excalidraw-island-push");
+        return;
+      }
+
+      const gapPx = 8;
+      host.style.setProperty(
+        "--nooma-excalidraw-island-push",
+        `${stack.offsetHeight + gapPx}px`
+      );
+    };
+
+    if (!selectedNoomaEmbed) {
+      syncPanelChrome();
+      return;
     }
-    if (inferredType === "algebra") {
-      return <BlankAlgebraEmbed />;
-    }
-    return <BlankArithmeticEmbed />;
-  }, []);
+
+    syncPanelChrome();
+    const stackObserver = stack ? new ResizeObserver(syncPanelChrome) : null;
+    stackObserver?.observe(stack);
+
+    const domObserver = new MutationObserver(() => {
+      requestAnimationFrame(syncPanelChrome);
+    });
+    domObserver.observe(host, { childList: true, subtree: true });
+
+    return () => {
+      stackObserver?.disconnect();
+      domObserver.disconnect();
+      syncNoomaEmbedPanelFieldsets(host, false);
+      host.style.removeProperty("--nooma-excalidraw-island-push");
+    };
+  }, [selectedNoomaEmbed]);
+
+  const updateArithmeticEmbeddable = useCallback(
+    (elementId: string, arithmetic: ArithmeticBoxState) => {
+      const api = apiRef.current;
+      if (!api) return;
+
+      const minimumHeight = arithmeticBoxHeightForRows(arithmetic.rows.length);
+      const now = Date.now();
+      const elements = api.getSceneElementsIncludingDeleted().map((element) => {
+        if (element.id !== elementId) return element;
+        const rawCustomData =
+          element.customData &&
+          typeof element.customData === "object" &&
+          !Array.isArray(element.customData)
+            ? (element.customData as Record<string, unknown>)
+            : {};
+        return {
+          ...element,
+          height: Math.max(element.height, minimumHeight),
+          customData: {
+            ...rawCustomData,
+            noomaBlockType: "arithmetic",
+            arithmetic,
+          } satisfies NoomaEmbeddableCustomData,
+          version: element.version + 1,
+          versionNonce: randomInt(),
+          updated: now,
+        };
+      });
+
+      api.updateScene({
+        elements,
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      queueMicrotask(() => {
+        api.refresh();
+        requestAnimationFrame(() => {
+          api.refresh();
+        });
+      });
+    },
+    []
+  );
+
+  const renderEmbeddable: RenderEmbeddableImpl = useCallback(
+    (_element) => {
+      const data = _element.customData as
+        | NoomaEmbeddableCustomData
+        | Record<string, unknown>
+        | undefined;
+      const inferredType =
+        typeof data?.noomaBlockType === "string"
+          ? data.noomaBlockType
+          : "arithmetic";
+      if (inferredType === "arithmetic" || inferredType === "arithmetic-grid") {
+        const arithmetic =
+          data &&
+          "arithmetic" in data &&
+          data.arithmetic &&
+          typeof data.arithmetic === "object"
+            ? (data.arithmetic as ArithmeticBoxState)
+            : undefined;
+        return (
+          <ArithmeticBoxEmbed
+            state={arithmetic}
+            elementHeight={_element.height}
+            onChange={(nextState) =>
+              updateArithmeticEmbeddable(_element.id, nextState)
+            }
+          />
+        );
+      }
+      if (inferredType === "algebra") {
+        return <BlankAlgebraEmbed />;
+      }
+      return (
+        <ArithmeticBoxEmbed
+          elementHeight={_element.height}
+          onChange={(nextState) =>
+            updateArithmeticEmbeddable(_element.id, nextState)
+          }
+        />
+      );
+    },
+    [updateArithmeticEmbeddable]
+  );
 
   const validateEmbeddable = useCallback((link: string) => {
     return link.startsWith(NOOMA_EMBED_LINK_PREFIX);
@@ -489,13 +696,17 @@ export function ExcalidrawCanvasHost() {
       const api = apiRef.current;
       if (!api) return;
       const { sceneX, sceneY } = viewportCenterSceneCoords(api);
+      const placeW =
+        blockType === "arithmetic" ? DEFAULT_ARITHMETIC_BOX_W : BLANK_BOX_W;
+      const placeH =
+        blockType === "arithmetic" ? DEFAULT_ARITHMETIC_BOX_H : BLANK_BOX_H;
       insertEmbeddableNoomaBlock(api, {
         ...EXCALIDRAW_EMBEDDABLE_PAINT,
         type: "embeddable",
-        x: sceneX - BLANK_BOX_W / 2,
-        y: sceneY - BLANK_BOX_H / 2,
-        width: BLANK_BOX_W,
-        height: BLANK_BOX_H,
+        x: sceneX - placeW / 2,
+        y: sceneY - placeH / 2,
+        width: placeW,
+        height: placeH,
         link: noomaEmbedLinkForBlock(blockType),
         customData: { noomaBlockType: blockType },
       } as unknown as ExcalidrawElementSkeletonInput);
@@ -533,7 +744,7 @@ export function ExcalidrawCanvasHost() {
       !Array.isArray(initialPayload.appState)
         ? (initialPayload.appState as Record<string, unknown>)
         : {};
-    const appState = { ...rawApp };
+    const appState = { ...NOOMA_EXCALIDRAW_APP_DEFAULTS, ...rawApp };
     const openSidebar = appState.openSidebar;
     if (
       openSidebar &&
@@ -556,6 +767,61 @@ export function ExcalidrawCanvasHost() {
     };
   }, [initialPayload]);
 
+  const excalidrawUiOptions = useMemo(
+    () => ({
+      canvasActions: {
+        loadScene: false,
+        changeViewBackgroundColor: false,
+      },
+    }),
+    []
+  );
+
+  const handleExcalidrawChange = useCallback(
+    (
+      elements: Parameters<ExcalidrawOnChange>[0],
+      appState: Parameters<ExcalidrawOnChange>[1],
+      files: Parameters<ExcalidrawOnChange>[2]
+    ) => {
+      const gridOn = appState.gridModeEnabled === true;
+      setGridModeOn((prev) => (prev === gridOn ? prev : gridOn));
+
+      const nextEmbed = getSingleSelectedNoomaEmbed(appState, elements);
+      setSelectedNoomaEmbed((prev) =>
+        isSameNoomaEmbedSelection(prev, nextEmbed) ? prev : nextEmbed
+      );
+
+      requestAnimationFrame(() => {
+        syncNoomaEmbedPanelFieldsets(
+          hostRef.current,
+          nextEmbed !== null
+        );
+      });
+
+      const clamped = clampArithmeticEmbeddableHeights(elements);
+      if (clamped.changed) {
+        apiRef.current?.updateScene({
+          elements: clamped.elements,
+          captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+        });
+      }
+      schedulePersist(clamped.elements, appState, files);
+    },
+    [schedulePersist]
+  );
+
+  const handleGridToggle = useCallback((checked: boolean) => {
+    const api = apiRef.current;
+    if (!api) return;
+    setGridModeOn(checked);
+    api.updateScene({
+      appState: {
+        gridModeEnabled: checked,
+        objectsSnapModeEnabled: false,
+      },
+    });
+  }, []);
+
   if (!sceneReady || !initialData) {
     return (
       <div
@@ -569,7 +835,11 @@ export function ExcalidrawCanvasHost() {
   }
 
   return (
-    <div className="nooma-excalidraw-host relative h-[100dvh] w-full overflow-hidden bg-[var(--background)]">
+    <div
+      ref={hostRef}
+      className={`nooma-excalidraw-host relative h-[100dvh] w-full overflow-hidden bg-[var(--background)]${noomaEmbedSelected ? " nooma-embed-selected" : ""}`}
+      data-nooma-embed-selected={noomaEmbedSelected ? "" : undefined}
+    >
       <Excalidraw
         aiEnabled={false}
         excalidrawAPI={(api) => {
@@ -578,16 +848,43 @@ export function ExcalidrawCanvasHost() {
         initialData={initialData}
         validateEmbeddable={validateEmbeddable}
         renderEmbeddable={renderEmbeddable}
-        onChange={(elements, appState, files) => {
-          schedulePersist(elements, appState, files);
-        }}
-        UIOptions={{
-          canvasActions: {
-            loadScene: false,
-            changeViewBackgroundColor: false,
-          },
-        }}
-      />
+        onChange={handleExcalidrawChange}
+        UIOptions={excalidrawUiOptions}
+      >
+        <Footer>
+          <label
+            className="nooma-footer-grid-control inline-flex cursor-pointer items-center gap-2 self-center select-none"
+            title="Toggle background grid (⌘/Ctrl+')"
+          >
+            <span className="text-sm font-medium leading-snug text-neutral-700">
+              Grid
+            </span>
+            <Switch
+              checked={gridModeOn}
+              size="sm"
+              className="shrink-0 border border-neutral-200/80 data-checked:border-[#554ecd] data-checked:bg-[#554ecd] data-unchecked:bg-neutral-100 dark:data-unchecked:bg-neutral-200"
+              onPointerDown={(e) => e.stopPropagation()}
+              onCheckedChange={handleGridToggle}
+            />
+          </label>
+        </Footer>
+      </Excalidraw>
+      {selectedNoomaEmbed ? (
+        <div
+          ref={embedPropertiesStackRef}
+          className="nooma-embed-properties-stack"
+        >
+          <NoomaEmbedPropertiesPanel
+            selection={selectedNoomaEmbed}
+            onArithmeticChange={(nextState) =>
+              updateArithmeticEmbeddable(
+                selectedNoomaEmbed.elementId,
+                nextState
+              )
+            }
+          />
+        </div>
+      ) : null}
       {/* Portaled above Excalidraw’s own body portals (layer UI ~1000). Host is client-only (dynamic ssr:false). */}
       {createPortal(
         <div ref={fabAnchorRef} className="nooma-toolbar-fab-anchor">

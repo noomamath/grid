@@ -133,7 +133,7 @@
 
 /* Keep custom embeddable DOM below Excalidraw interactive selection handles. */
 .excalidraw .excalidraw__embeddable-container {
-  z-index: 1;
+  z-index: 2;
 }
 
 /* Hide Excalidraw hyperlink editor/preview UI for custom embeddables. */
@@ -141,12 +141,79 @@
   display: none !important;
 }
 
+/* Nooma blocks provide their own affordances; suppress Excalidraw's generic embed prompt. */
+.excalidraw .excalidraw__embeddable-hint {
+  display: none !important;
+}
+
 /* Shared base styling for embedded Nooma math cards. */
 .excalidraw .nooma-math-card {
-  border: 1px solid #554ecd;
+  border: 2px solid #554ecd;
   border-radius: 8px !important;
   background: #ffffff;
   box-shadow: 0 2px 2px oklch(0.38 0.03 272 / 0.20);
+  pointer-events: auto;
+}
+
+.excalidraw .nooma-math-card button {
+  pointer-events: auto;
+}
+
+.excalidraw .nooma-math-card.nooma-arithmetic-card,
+.excalidraw .nooma-math-card.nooma-arithmetic-card * {
+  pointer-events: none;
+}
+
+.excalidraw .nooma-math-card.nooma-arithmetic-card button {
+  pointer-events: auto;
+}
+
+.excalidraw .nooma-math-card.nooma-arithmetic-card button * {
+  pointer-events: none;
+}
+
+/*
+ * Answer row is right-aligned like addends; empty space on the left must still hit
+ * this row (pointer-events:auto) or clicks fall through to the canvas below.
+ */
+.excalidraw .nooma-math-card.nooma-arithmetic-card .nooma-arithmetic-answer-row {
+  pointer-events: auto;
+}
+
+@keyframes nooma-arithmetic-caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/*
+ * Embeddable DOM may not be a descendant of `.excalidraw`; scope only to the card
+ * so the caret always picks up size/color (see ArithmeticBoxEmbed).
+ */
+.nooma-math-card .nooma-arithmetic-caret {
+  position: relative;
+  z-index: 2;
+  display: inline-block;
+  flex-shrink: 0;
+  width: 2px;
+  min-height: 10px;
+  height: 0.8em;
+  border-radius: 1px;
+  /* Same as `.excalidraw .nooma-math-card` border */
+  background-color: #554ecd;
+  animation: nooma-arithmetic-caret-blink 1.05s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nooma-math-card .nooma-arithmetic-caret {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 /* Hide Excalidraw library UI (sidebar, header controls); Nooma uses custom embeds. */
@@ -230,6 +297,8 @@
 
 /*
  * More tools (⋯): hide “Generate” row + all items after it (Mermaid, AI / TTD).
+ * Scoped to `.App-toolbar__extra-tools-dropdown` only — does not affect the canvas
+ * dot grid (`gridModeEnabled`) or the main hamburger / command-palette toggles.
  * Heading is a bare div with inline font-weight:600 (see Excalidraw ShapesSwitcher).
  */
 .excalidraw
@@ -304,12 +373,26 @@
   display: none !important;
 }
 .excalidraw .App-menu_bottom {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
   padding-inline-start: var(--nooma-footer-padding-inline-start) !important;
   padding-inline-end: var(--nooma-footer-padding-inline-end) !important;
+}
+/* Footer tunnel for custom UI (Grid switch): same vertical centerline as undo/redo row. */
+.excalidraw .footer-center {
+  display: flex;
+  align-items: center;
 }
 .excalidraw .App-menu_bottom .zoom-actions {
   position: absolute;
   inset-inline-end: var(--nooma-footer-zoom-inset-end);
   bottom: 0;
   z-index: 102;
+}
+
+/* Footer: Nooma “Grid” row (shadcn Switch) in Excalidraw’s Footer tunnel. */
+.excalidraw .nooma-footer-grid-control {
+  margin-inline-start: 1rem;
+  transform: translateY(8px);
 }
