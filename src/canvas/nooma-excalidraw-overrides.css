@@ -95,3 +95,24 @@
   gap: 0.375rem;
   width: 100%;
 }
+
+/*
+ * Excalidraw draws the embed "Open link" control on the canvas (not DOM). Cover it
+ * with a positioned ::after shield on the embed container so the embed stays active.
+ */
+.nooma-excalidraw-host .excalidraw__embeddable-container {
+  overflow: visible !important;
+}
+
+.nooma-excalidraw-host .excalidraw__embeddable-container::after {
+  content: "";
+  position: absolute;
+  /* Nudge over Excalidraw’s top-right link control (tune if icon shifts). */
+  top: -16px;
+  right: -15px;
+  width: 14px;
+  height: 15px;
+  background-color: #ffffff;
+  z-index: 9999;
+  pointer-events: all;
+}
