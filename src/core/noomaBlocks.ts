@@ -54,3 +54,13 @@ export type NoomaEmbeddableCustomData =
 export function noomaEmbedLinkForBlock(type: NoomaBlockType): string {
   return `${NOOMA_EMBED_LINK_PREFIX}${type}`;
 }
+
+export function isNoomaEmbeddableElement(
+  element: { type?: unknown; link?: unknown }
+): boolean {
+  return (
+    element.type === "embeddable" &&
+    typeof element.link === "string" &&
+    element.link.startsWith(NOOMA_EMBED_LINK_PREFIX)
+  );
+}

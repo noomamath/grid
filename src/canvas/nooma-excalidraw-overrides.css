@@ -1,0 +1,19 @@
+/*
+ * Loaded after @excalidraw/excalidraw/index.css (see ExcalidrawCanvasHost).
+ *
+ * Nooma embed cards: hide stroke/fill/opacity in the left properties column
+ * (.panelColumn). Excalidraw often renders property blocks as Fragment siblings
+ * (h3 + controls are direct .panelColumn children), not only wrapped in divs.
+ * Hide every direct child, then restore Layers (first fieldset) and Actions (last).
+ */
+.nooma-excalidraw-host[data-nooma-embed-selected] .panelColumn > *,
+.nooma-excalidraw-host.nooma-embed-selected .panelColumn > * {
+  display: none !important;
+}
+
+.nooma-excalidraw-host[data-nooma-embed-selected] .panelColumn > fieldset:first-of-type,
+.nooma-excalidraw-host[data-nooma-embed-selected] .panelColumn > fieldset:last-of-type,
+.nooma-excalidraw-host.nooma-embed-selected .panelColumn > fieldset:first-of-type,
+.nooma-excalidraw-host.nooma-embed-selected .panelColumn > fieldset:last-of-type {
+  display: block !important;
+}
