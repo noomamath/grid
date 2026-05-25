@@ -1,42 +1,69 @@
 /*
  * Loaded after @excalidraw/excalidraw/index.css (see ExcalidrawCanvasHost).
  *
- * Nooma embed cards: hide stroke/fill/opacity in the left properties column
- * (.panelColumn). Keep Layers (first fieldset) and Actions (last fieldset).
+ * Nooma embed cards: hide style fieldsets in .panelColumn. Style/sloppiness/edges
+ * are fieldsets with named radio groups; Layers uses .zIndexButton (see sync helper).
  */
-.nooma-excalidraw-host[data-nooma-embed-selected] .panelColumn > *:not(fieldset),
-.nooma-excalidraw-host.nooma-embed-selected .panelColumn > *:not(fieldset) {
+.nooma-excalidraw-host[data-nooma-embed-selected] .excalidraw .panelColumn > *:not(fieldset),
+.nooma-excalidraw-host.nooma-embed-selected .excalidraw .panelColumn > *:not(fieldset) {
   display: none !important;
 }
 
-.nooma-excalidraw-host[data-nooma-embed-selected] .panelColumn > fieldset:first-of-type,
-.nooma-excalidraw-host[data-nooma-embed-selected] .panelColumn > fieldset:last-of-type,
-.nooma-excalidraw-host.nooma-embed-selected .panelColumn > fieldset:first-of-type,
-.nooma-excalidraw-host.nooma-embed-selected .panelColumn > fieldset:last-of-type {
+.nooma-excalidraw-host[data-nooma-embed-selected] .excalidraw .panelColumn > fieldset,
+.nooma-excalidraw-host.nooma-embed-selected .excalidraw .panelColumn > fieldset {
+  display: none !important;
+}
+
+/* CSS blacklist for known style/align fieldsets (backup for JS-tagged fieldsets). */
+.nooma-excalidraw-host[data-nooma-embed-selected]
+  .excalidraw
+  .panelColumn
+  > fieldset:not(:has(input[name="strokeStyle"])):not(:has(input[name="sloppiness"])):not(
+    :has(input[name="edges"])
+  ):not(:has([data-testid="strokeWidth-thin"])):not(:has([data-testid="align-left"])),
+.nooma-excalidraw-host.nooma-embed-selected
+  .excalidraw
+  .panelColumn
+  > fieldset:not(:has(input[name="strokeStyle"])):not(:has(input[name="sloppiness"])):not(
+    :has(input[name="edges"])
+  ):not(:has([data-testid="strokeWidth-thin"])):not(:has([data-testid="align-left"])),
+.nooma-excalidraw-host[data-nooma-embed-selected]
+  .excalidraw
+  .panelColumn
+  > fieldset.nooma-panel-fieldset-show,
+.nooma-excalidraw-host.nooma-embed-selected
+  .excalidraw
+  .panelColumn
+  > fieldset.nooma-panel-fieldset-show {
   display: block !important;
 }
 
-/* Room for the custom overlay above Layers / Actions inside the Island. */
-.nooma-excalidraw-host[data-nooma-embed-selected] .panelColumn > fieldset:first-of-type,
-.nooma-excalidraw-host.nooma-embed-selected .panelColumn > fieldset:first-of-type {
-  margin-top: 5.75rem;
+/*
+ * Custom block panel: separate Island-style card above Excalidraw’s properties
+ * Island. --nooma-excalidraw-island-push is set from JS (stack height + gap).
+ */
+.nooma-excalidraw-host {
+  --nooma-embed-chrome-top: 4.25rem;
+  --nooma-embed-chrome-left: 1rem;
+  --nooma-embed-chrome-width: 12.5rem;
 }
 
-/*
- * Custom block controls: overlay the top of Excalidraw’s left Island (do not portal
- * into .panelColumn — Excalidraw owns that DOM and React tree).
- */
-.nooma-excalidraw-host .nooma-embed-properties-overlay {
+.nooma-excalidraw-host .nooma-embed-properties-stack {
   position: absolute;
-  top: 4.25rem;
-  left: 1rem;
+  top: var(--nooma-embed-chrome-top);
+  left: var(--nooma-embed-chrome-left);
   z-index: 120;
-  width: 12.5rem;
-  max-height: min(24rem, calc(100dvh - 6rem));
-  overflow-y: auto;
+  width: var(--nooma-embed-chrome-width);
   box-sizing: border-box;
-  padding: 0.75rem;
+  pointer-events: none;
+}
+
+.nooma-excalidraw-host .nooma-embed-properties-stack > * {
   pointer-events: auto;
+}
+
+.nooma-excalidraw-host .nooma-embed-properties-stack .nooma-embed-properties-panel {
+  padding: 0.75rem;
   border-radius: var(--border-radius-lg, 0.5rem);
   background: var(--island-bg-color, #ffffff);
   box-shadow:
@@ -44,13 +71,18 @@
     0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.nooma-embed-properties-overlay .nooma-embed-properties-panel {
+.nooma-excalidraw-host[data-nooma-embed-selected] .selected-shape-actions,
+.nooma-excalidraw-host.nooma-embed-selected .selected-shape-actions {
+  margin-top: var(--nooma-excalidraw-island-push, 0px) !important;
+}
+
+.nooma-embed-properties-stack .nooma-embed-properties-panel {
   display: flex;
   flex-direction: column;
   row-gap: 0.75rem;
 }
 
-.nooma-embed-properties-overlay h3 {
+.nooma-embed-properties-stack h3 {
   margin: 0 0 0.25rem;
   font-size: 0.75rem;
   font-weight: 400;

@@ -32,6 +32,7 @@ import {
   isSameNoomaEmbedSelection,
   type SelectedNoomaEmbed,
 } from "@/canvas/noomaEmbedPanel";
+import { syncNoomaEmbedPanelFieldsets } from "@/canvas/syncNoomaEmbedPanelFieldsets";
 import {
   loadGuestDocument,
   saveGuestCanvasDocument,
@@ -556,6 +557,50 @@ export function ExcalidrawCanvasHost() {
     []
   );
 
+  const embedPropertiesStackRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    const stack = embedPropertiesStackRef.current;
+    if (!host) return;
+
+    const syncPanelChrome = () => {
+      syncNoomaEmbedPanelFieldsets(host, selectedNoomaEmbed !== null);
+
+      if (!selectedNoomaEmbed || !stack) {
+        host.style.removeProperty("--nooma-excalidraw-island-push");
+        return;
+      }
+
+      const gapPx = 8;
+      host.style.setProperty(
+        "--nooma-excalidraw-island-push",
+        `${stack.offsetHeight + gapPx}px`
+      );
+    };
+
+    if (!selectedNoomaEmbed) {
+      syncPanelChrome();
+      return;
+    }
+
+    syncPanelChrome();
+    const stackObserver = stack ? new ResizeObserver(syncPanelChrome) : null;
+    stackObserver?.observe(stack);
+
+    const domObserver = new MutationObserver(() => {
+      requestAnimationFrame(syncPanelChrome);
+    });
+    domObserver.observe(host, { childList: true, subtree: true });
+
+    return () => {
+      stackObserver?.disconnect();
+      domObserver.disconnect();
+      syncNoomaEmbedPanelFieldsets(host, false);
+      host.style.removeProperty("--nooma-excalidraw-island-push");
+    };
+  }, [selectedNoomaEmbed]);
+
   const updateArithmeticEmbeddable = useCallback(
     (elementId: string, arithmetic: ArithmeticBoxState) => {
       const api = apiRef.current;
@@ -746,6 +791,13 @@ export function ExcalidrawCanvasHost() {
         isSameNoomaEmbedSelection(prev, nextEmbed) ? prev : nextEmbed
       );
 
+      requestAnimationFrame(() => {
+        syncNoomaEmbedPanelFieldsets(
+          hostRef.current,
+          nextEmbed !== null
+        );
+      });
+
       const clamped = clampArithmeticEmbeddableHeights(elements);
       if (clamped.changed) {
         apiRef.current?.updateScene({
@@ -818,7 +870,10 @@ export function ExcalidrawCanvasHost() {
         </Footer>
       </Excalidraw>
       {selectedNoomaEmbed ? (
-        <div className="nooma-embed-properties-overlay">
+        <div
+          ref={embedPropertiesStackRef}
+          className="nooma-embed-properties-stack"
+        >
           <NoomaEmbedPropertiesPanel
             selection={selectedNoomaEmbed}
             onArithmeticChange={(nextState) =>
