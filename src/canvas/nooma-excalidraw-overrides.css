@@ -97,11 +97,31 @@
 }
 
 /*
- * Excalidraw draws the embed "open link" control when the embed is not selected.
- * Link shields are host overlays (z-index 200); embed containers use z-index 1/2 from JS/CSS.
+ * Breakout shadow: unlock Excalidraw embed nesting so .nooma-embed-shell shadow
+ * bleeds past the embed clip. Embed containers use z-index 1/2 from JS; portaled
+ * link shields (below) cover and block the canvas-drawn link icon.
  */
-.nooma-excalidraw-host .excalidraw__embeddable-container {
+.nooma-excalidraw-host .excalidraw__embeddable-container,
+.nooma-excalidraw-host .excalidraw__embeddable-container__inner,
+.nooma-excalidraw-host .excalidraw__embeddable__outer {
   overflow: visible !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+.nooma-excalidraw-host .excalidraw__embeddable-container__inner {
+  mask: none !important;
+  -webkit-mask: none !important;
+}
+
+.nooma-excalidraw-host .nooma-embed-shell {
+  background-color: #ffffff !important;
+  box-shadow: 0px 12px 16px rgba(0, 0, 0, 0.15) !important;
+  border-radius: 35px !important;
+}
+
+.nooma-excalidraw-host .nooma-embed-shell .nooma-math-card {
+  box-shadow: none !important;
 }
 
 /*

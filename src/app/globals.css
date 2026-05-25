@@ -345,6 +345,26 @@
   transform: translate(-50%, 50%);
   pointer-events: auto;
 }
+
+/* Top-left wordmark beside Excalidraw’s hamburger (.main-menu-trigger). */
+.nooma-header-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding-inline: 0.75rem;
+  border-radius: var(--border-radius-lg, 0.5rem);
+  background: var(--nooma-toolbar-fab-bg, oklch(0.52 0.19 264));
+  color: #ffffff;
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+}
+
 .nooma-toolbar-fab {
   display: flex;
   align-items: center;

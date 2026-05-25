@@ -18,6 +18,8 @@ import {
   type ArithmeticAnnotation,
   type ArithmeticBoxState,
 } from "@/core/noomaBlocks";
+import { GripVertical } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 
 const DIGIT_CELL_WIDTH = 28;
@@ -609,10 +611,14 @@ export function ArithmeticBoxEmbed({
       onKeyDown={onKeyDown}
     >
       <div className="mb-1 flex shrink-0 items-center justify-between gap-2 font-sans text-[10px] text-neutral-500">
-        <span className="min-w-0 flex-1 leading-snug">
-          {carryMode
-            ? "Type a carry digit"
-            : "Drag blank space; click digits to edit"}
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 leading-snug">
+          {!carryMode ? (
+            <GripVertical
+              className="size-3 shrink-0 text-neutral-400/80"
+              aria-hidden
+            />
+          ) : null}
+          {carryMode ? "Type a carry digit" : "Arithmetic Stack"}
         </span>
         <button
           type="button"

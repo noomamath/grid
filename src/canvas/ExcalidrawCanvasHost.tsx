@@ -26,6 +26,7 @@ import { Plus } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
 import { NoomaEmbeddableShell } from "@/canvas/NoomaEmbeddableShell";
+import { NoomaHeaderBrand } from "@/canvas/NoomaHeaderBrand";
 import { NoomaEmbedLinkShieldOverlays } from "@/canvas/NoomaEmbedLinkShieldOverlay";
 import { ArithmeticBoxEmbed } from "@/editors/cell-grid/ArithmeticBoxEmbed";
 import { NoomaEmbedPropertiesPanel } from "@/canvas/NoomaEmbedPropertiesPanel";
@@ -903,6 +904,7 @@ export function ExcalidrawCanvasHost() {
           </label>
         </Footer>
       </Excalidraw>
+      <NoomaHeaderBrand hostRef={hostRef} />
       <NoomaEmbedLinkShieldOverlays
         hostRef={hostRef}
         hiddenElementId={selectedNoomaEmbed?.elementId ?? null}
