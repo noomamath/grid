@@ -50,6 +50,8 @@
 }
 
 :root {
+  --nooma-brand-bg: oklch(0.52 0.19 264);
+  --nooma-toolbar-fab-bg: var(--nooma-brand-bg);
   --nooma-grid-stroke: oklch(0.52 0.19 264);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -348,21 +350,24 @@
 
 /* Top-left wordmark beside Excalidraw’s hamburger (.main-menu-trigger). */
 .nooma-header-brand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  padding-inline: 0.75rem;
-  border-radius: var(--border-radius-lg, 0.5rem);
-  background: var(--nooma-toolbar-fab-bg, oklch(0.52 0.19 264));
-  color: #ffffff;
-  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
-  font-size: 0.875rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  line-height: 1;
-  pointer-events: none;
-  user-select: none;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  padding-inline: 0.75rem !important;
+  border-radius: var(--nooma-header-brand-radius, 0.5rem) !important;
+  background: var(--nooma-brand-bg, oklch(0.52 0.19 264)) !important;
+  color: #ffffff !important;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+  line-height: 1 !important;
+  box-shadow:
+    0 2px 10px oklch(0.55 0.2 280 / 0.20),
+    0 2px 4px oklch(0 0 0 / 0.8) !important;
+  pointer-events: none !important;
+  user-select: none !important;
 }
 
 .nooma-toolbar-fab {

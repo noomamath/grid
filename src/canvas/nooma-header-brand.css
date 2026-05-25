@@ -1,0 +1,24 @@
+/*
+ * Loaded from NoomaHeaderBrand (client) so styles apply to the body portal.
+ * Duplicated in globals.css as backup; keep in sync.
+ */
+.nooma-header-brand {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  padding-inline: 0.75rem !important;
+  border-radius: var(--nooma-header-brand-radius, 0.5rem) !important;
+  background: var(--nooma-brand-bg, oklch(0.52 0.19 264)) !important;
+  color: #ffffff !important;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+  line-height: 1 !important;
+  box-shadow:
+    0 2px 10px oklch(0.55 0.2 280 / 0.2),
+    0 2px 4px oklch(0 0 0 / 0.8) !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
