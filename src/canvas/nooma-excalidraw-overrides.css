@@ -2,12 +2,10 @@
  * Loaded after @excalidraw/excalidraw/index.css (see ExcalidrawCanvasHost).
  *
  * Nooma embed cards: hide stroke/fill/opacity in the left properties column
- * (.panelColumn). Excalidraw often renders property blocks as Fragment siblings
- * (h3 + controls are direct .panelColumn children), not only wrapped in divs.
- * Hide every direct child, then restore Layers (first fieldset) and Actions (last).
+ * (.panelColumn). Keep Layers (first fieldset) and Actions (last fieldset).
  */
-.nooma-excalidraw-host[data-nooma-embed-selected] .panelColumn > *,
-.nooma-excalidraw-host.nooma-embed-selected .panelColumn > * {
+.nooma-excalidraw-host[data-nooma-embed-selected] .panelColumn > *:not(fieldset),
+.nooma-excalidraw-host.nooma-embed-selected .panelColumn > *:not(fieldset) {
   display: none !important;
 }
 
@@ -16,4 +14,52 @@
 .nooma-excalidraw-host.nooma-embed-selected .panelColumn > fieldset:first-of-type,
 .nooma-excalidraw-host.nooma-embed-selected .panelColumn > fieldset:last-of-type {
   display: block !important;
+}
+
+/* Room for the custom overlay above Layers / Actions inside the Island. */
+.nooma-excalidraw-host[data-nooma-embed-selected] .panelColumn > fieldset:first-of-type,
+.nooma-excalidraw-host.nooma-embed-selected .panelColumn > fieldset:first-of-type {
+  margin-top: 5.75rem;
+}
+
+/*
+ * Custom block controls: overlay the top of Excalidraw’s left Island (do not portal
+ * into .panelColumn — Excalidraw owns that DOM and React tree).
+ */
+.nooma-excalidraw-host .nooma-embed-properties-overlay {
+  position: absolute;
+  top: 4.25rem;
+  left: 1rem;
+  z-index: 120;
+  width: 12.5rem;
+  max-height: min(24rem, calc(100dvh - 6rem));
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  pointer-events: auto;
+  border-radius: var(--border-radius-lg, 0.5rem);
+  background: var(--island-bg-color, #ffffff);
+  box-shadow:
+    0 0 0 1px var(--default-border-color, rgba(0, 0, 0, 0.08)),
+    0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.nooma-embed-properties-overlay .nooma-embed-properties-panel {
+  display: flex;
+  flex-direction: column;
+  row-gap: 0.75rem;
+}
+
+.nooma-embed-properties-overlay h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-primary-color, #1e1e1e);
+}
+
+.nooma-embed-properties-panel .nooma-embed-properties-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  width: 100%;
 }

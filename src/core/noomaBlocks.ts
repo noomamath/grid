@@ -56,11 +56,23 @@ export function noomaEmbedLinkForBlock(type: NoomaBlockType): string {
 }
 
 export function isNoomaEmbeddableElement(
-  element: { type?: unknown; link?: unknown }
+  element: { type?: unknown; link?: unknown; customData?: unknown }
 ): boolean {
-  return (
-    element.type === "embeddable" &&
+  if (element.type !== "embeddable") return false;
+  if (
     typeof element.link === "string" &&
     element.link.startsWith(NOOMA_EMBED_LINK_PREFIX)
+  ) {
+    return true;
+  }
+  const customData = element.customData;
+  if (!customData || typeof customData !== "object" || Array.isArray(customData)) {
+    return false;
+  }
+  const blockType = (customData as { noomaBlockType?: unknown }).noomaBlockType;
+  return (
+    blockType === "arithmetic" ||
+    blockType === "algebra" ||
+    blockType === "arithmetic-grid"
   );
 }

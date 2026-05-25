@@ -26,6 +26,12 @@ import { Plus } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
 import { ArithmeticBoxEmbed } from "@/editors/cell-grid/ArithmeticBoxEmbed";
+import { NoomaEmbedPropertiesPanel } from "@/canvas/NoomaEmbedPropertiesPanel";
+import {
+  getSingleSelectedNoomaEmbed,
+  isSameNoomaEmbedSelection,
+  type SelectedNoomaEmbed,
+} from "@/canvas/noomaEmbedPanel";
 import {
   loadGuestDocument,
   saveGuestCanvasDocument,
@@ -34,7 +40,6 @@ import {
   DEFAULT_ARITHMETIC_BOX_STATE,
   NOOMA_EMBED_LINK_PREFIX,
   arithmeticBoxHeightForRows,
-  isNoomaEmbeddableElement,
   noomaEmbedLinkForBlock,
   type ArithmeticBoxState,
   type NoomaBlockType,
@@ -426,28 +431,8 @@ function BlankAlgebraEmbed() {
   );
 }
 
-function selectionIsOnlyNoomaEmbeddables(
-  appState: Parameters<ExcalidrawOnChange>[1],
-  elements: readonly unknown[]
-): boolean {
-  const selectedIds = appState.selectedElementIds;
-  if (!selectedIds || typeof selectedIds !== "object") return false;
-
-  const selected: unknown[] = [];
-  for (const raw of elements) {
-    if (!raw || typeof raw !== "object") continue;
-    const el = raw as { id?: unknown };
-    if (typeof el.id === "string" && selectedIds[el.id]) {
-      selected.push(raw);
-    }
-  }
-  if (selected.length === 0) return false;
-  return selected.every((raw) =>
-    isNoomaEmbeddableElement(raw as { type?: unknown; link?: unknown })
-  );
-}
-
 export function ExcalidrawCanvasHost() {
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const apiRef = useRef<ExcalidrawAPI | null>(null);
   const fabAnchorRef = useRef<HTMLDivElement | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -455,7 +440,9 @@ export function ExcalidrawCanvasHost() {
   );
 
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
-  const [noomaEmbedSelected, setNoomaEmbedSelected] = useState(false);
+  const [selectedNoomaEmbed, setSelectedNoomaEmbed] =
+    useState<SelectedNoomaEmbed | null>(null);
+  const noomaEmbedSelected = selectedNoomaEmbed !== null;
   const [gridModeOn, setGridModeOn] = useState(
     NOOMA_EXCALIDRAW_APP_DEFAULTS.gridModeEnabled === true
   );
@@ -735,6 +722,54 @@ export function ExcalidrawCanvasHost() {
     };
   }, [initialPayload]);
 
+  const excalidrawUiOptions = useMemo(
+    () => ({
+      canvasActions: {
+        loadScene: false,
+        changeViewBackgroundColor: false,
+      },
+    }),
+    []
+  );
+
+  const handleExcalidrawChange = useCallback(
+    (
+      elements: Parameters<ExcalidrawOnChange>[0],
+      appState: Parameters<ExcalidrawOnChange>[1],
+      files: Parameters<ExcalidrawOnChange>[2]
+    ) => {
+      const gridOn = appState.gridModeEnabled === true;
+      setGridModeOn((prev) => (prev === gridOn ? prev : gridOn));
+
+      const nextEmbed = getSingleSelectedNoomaEmbed(appState, elements);
+      setSelectedNoomaEmbed((prev) =>
+        isSameNoomaEmbedSelection(prev, nextEmbed) ? prev : nextEmbed
+      );
+
+      const clamped = clampArithmeticEmbeddableHeights(elements);
+      if (clamped.changed) {
+        apiRef.current?.updateScene({
+          elements: clamped.elements,
+          captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+        });
+      }
+      schedulePersist(clamped.elements, appState, files);
+    },
+    [schedulePersist]
+  );
+
+  const handleGridToggle = useCallback((checked: boolean) => {
+    const api = apiRef.current;
+    if (!api) return;
+    setGridModeOn(checked);
+    api.updateScene({
+      appState: {
+        gridModeEnabled: checked,
+        objectsSnapModeEnabled: false,
+      },
+    });
+  }, []);
+
   if (!sceneReady || !initialData) {
     return (
       <div
@@ -749,6 +784,7 @@ export function ExcalidrawCanvasHost() {
 
   return (
     <div
+      ref={hostRef}
       className={`nooma-excalidraw-host relative h-[100dvh] w-full overflow-hidden bg-[var(--background)]${noomaEmbedSelected ? " nooma-embed-selected" : ""}`}
       data-nooma-embed-selected={noomaEmbedSelected ? "" : undefined}
     >
@@ -756,31 +792,12 @@ export function ExcalidrawCanvasHost() {
         aiEnabled={false}
         excalidrawAPI={(api) => {
           apiRef.current = api;
-          setGridModeOn(api.getAppState().gridModeEnabled === true);
         }}
         initialData={initialData}
         validateEmbeddable={validateEmbeddable}
         renderEmbeddable={renderEmbeddable}
-        onChange={(elements, appState, files) => {
-          setGridModeOn(appState.gridModeEnabled === true);
-          setNoomaEmbedSelected(
-            selectionIsOnlyNoomaEmbeddables(appState, elements)
-          );
-          const clamped = clampArithmeticEmbeddableHeights(elements);
-          if (clamped.changed) {
-            apiRef.current?.updateScene({
-              elements: clamped.elements,
-              captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-            });
-          }
-          schedulePersist(clamped.elements, appState, files);
-        }}
-        UIOptions={{
-          canvasActions: {
-            loadScene: false,
-            changeViewBackgroundColor: false,
-          },
-        }}
+        onChange={handleExcalidrawChange}
+        UIOptions={excalidrawUiOptions}
       >
         <Footer>
           <label
@@ -795,20 +812,24 @@ export function ExcalidrawCanvasHost() {
               size="sm"
               className="shrink-0 border border-neutral-200/80 data-checked:border-[#554ecd] data-checked:bg-[#554ecd] data-unchecked:bg-neutral-100 dark:data-unchecked:bg-neutral-200"
               onPointerDown={(e) => e.stopPropagation()}
-              onCheckedChange={(checked) => {
-                const api = apiRef.current;
-                if (!api) return;
-                api.updateScene({
-                  appState: {
-                    gridModeEnabled: checked,
-                    objectsSnapModeEnabled: false,
-                  },
-                });
-              }}
+              onCheckedChange={handleGridToggle}
             />
           </label>
         </Footer>
       </Excalidraw>
+      {selectedNoomaEmbed ? (
+        <div className="nooma-embed-properties-overlay">
+          <NoomaEmbedPropertiesPanel
+            selection={selectedNoomaEmbed}
+            onArithmeticChange={(nextState) =>
+              updateArithmeticEmbeddable(
+                selectedNoomaEmbed.elementId,
+                nextState
+              )
+            }
+          />
+        </div>
+      ) : null}
       {/* Portaled above Excalidraw’s own body portals (layer UI ~1000). Host is client-only (dynamic ssr:false). */}
       {createPortal(
         <div ref={fabAnchorRef} className="nooma-toolbar-fab-anchor">
